@@ -1,23 +1,145 @@
+import math
 from math import log2
 
 N = 100000
-k = log2(N) ** (1/3)
+k = math.floor(log2(N) ** (1/3))
+t = math.floor(log2(N) ** (2/3))
+start = 1
+vertices = [i for i in range(N)]
 adj = [set() for _ in range(N)]
-dist = [-1] * N
-len = [-1] * N
-pred = [-1] * N
+dist = [-1] * N  # sum of path weights
+depth = [-1] * N   # number of vertices traversed
+pred = [-1] * N  #last previous vertex visited in path
 
 
 
 
-#
-def findPivots(B: int, S: set, adj : list):
+#Graph Transformation
+def transformGraph(graph: dict):
+    new_vertices = [[] for _ in range(N)]
+    new_adj = {}
+
+    # create new vertices (neighbor pairs)
+    for i in range(N):
+        for x in adj[i]:
+            new_vertices[i].append((i, x[0]))
+            new_vertices[x[0]].append((x[0], i))
+    
+    for v_pairs in new_vertices:
+        for x in v_pairs:
+            new_adj[x] = set()
+    
+    # make a cycle per original vertex
+    i = 0
+    while i < N:
+        j = 0
+        while j < len(new_vertices[i]):
+            if j < len(new_vertices[i]) - 1:
+                new_adj[new_vertices[i][j]].add((new_vertices[i][j+1], 0))
+            else:
+                new_adj[new_vertices[i][j]].add((new_vertices[i][0], 0))
+            j = j+1
+        i = i+1
+    
+    # add edges between vertices with weights same as original
+    for key in adj:
+        for x in adj[key]:
+            new_adj[(key, x[0])].add(((x[0], key), x[1]))
+    N = sum(len(sublist) for sublist in new_vertices)
+    adj = new_adj
+    start = (start, next(iter(adj[start])))
+    vertices = new_vertices
+    return new_adj
+          
+
+#Path Comparison
+def cmp(u, v):
+    """
+    Compares path ending at u, v
+    Returns 1 if the path ending at u is shorter, -1 otherwise
+    Returns 0 if an error occured (i.e there is no path ending at u/v) 
+    Note: we use lexical order to break ties
+    """
+    if dist[u] == -1 or dist[v] == -1:
+        return 0
+    if dist[u] != dist[v]:
+        return (dist[v]-dist[u])/abs(dist[v]-dist[u])
+    if depth[u] != depth[v]:
+        return (depth[v]-depth[u])/abs(depth[v]-depth[u])
+    return (v-u)/abs(v-u)
+
+#Check if edge (u,v) needs to be relaxed(added)
+def needsUpdate(u, v):
+    if dist[u] == -1:
+        return 0
+    weight = adj[u][v]
+    if (weight + dist[u] != dist[v]):
+        cDist = weight + dist[u]
+        return (dist[v] - cDist)/abs(dist[v] - cDist) 
+    if (depth[u] + 1 != depth[v]):
+        return (depth[v] - depth[u] - 1)/abs(depth[v] - depth[u] - 1)
+    if pred[v] == u:
+        return 1
+    return cmp(u, pred[v])
+
+def update(u, v):
+    cWeight = adj[u][v]
+    dist[v] = dist[u] + cWeight
+    depth[v] = depth[u] + 1
+    pred[v] = u
+
+
+#Algorithm 1
+def findPivots(B, S):
+    """
+    U': Contains every incomplete vertex with d(v) < B where the shortest path visits some vertex in S
+    Finds a set W of size O(k|S|) and a set of pivots P (subset of S) with |P| <= |W|/k
+    For every x in U'
+        x is in W and complete (dist[x] = d(x))
+        or
+        The shortest path to x visits some complete vertex in P
+    Runs in O(k|W|) = O(min{k^2|S|, k|U'|})
+    """
+
     W = S.copy()
     prev = S.copy()
     for i in range(1, k+1):
         W_i = set()
-        for w in prev:
-            for v in adj[w]:
-                if v not in S:
-                    W_i.add(v)
-
+        for u in prev:
+            for v in adj[u]:
+                if needsUpdate(u, v):
+                    update(u, v)
+                    if dist[v] < B:
+                        W_i.add(v)                
+        W.add(W_i)
+        prev = W_i
+        if (len(W) > k*len(S)):
+            P = S
+            return (P, W)
+    #Create Temproary subgraph of currently processed shortest paths (Directed Forest)
+    tAdj = {}
+    for u in W:
+        for v in adj[u]:
+            if v in W and pred[v] == u:
+                tAdj[u].append[{v: adj[u][v]}]
+    #Get elements in S whose subtree has at least K vertices
+    dfs = []
+    stack = [start]
+    while len(stack) > 0:
+        curr = stack.pop()
+        for v in tAdj[curr]:
+            if pred[v] == u:
+                stack.append(v)
+    stack.reverse()
+    sz = {}
+    for u in W:
+        sz[u] = 1
+    for u in dfs:
+        for v in tAdj[u]:
+            if (pred[v] == u):
+                sz[u] += sz[v]
+    P = {}
+    for u in W:
+        if sz[u] >= k:
+            P.add(u)
+    return (P, W)
