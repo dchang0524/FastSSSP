@@ -1,5 +1,6 @@
 import math
 from math import log2
+import heapq
 
 N = 100000
 k = math.floor(log2(N) ** (1/3))
@@ -143,3 +144,36 @@ def findPivots(B, S):
         if sz[u] >= k:
             P.add(u)
     return (P, W)
+
+
+def BaseCase(B, S):
+    """
+    Given a bound B and a singleton source S,
+    returns a bound B' and a set of vertices U
+    U is a set of size =< k obtained by running 'mini Dijkstra' restricted by B
+    and B' is a possibly tighter bound for U
+    """
+    U_0 = S
+    x = S[0]
+    heap = [(dist[x], x)]  # Sort by distance
+    heapq.heapify(heap)
+    while heap and len(U_0) < k+1:
+        element = heapq.heappop(heap)
+        u = element[1]
+        U_0.add(u)
+        for v in adj[u]:
+            if needsUpdate(u, v) and dist[u] + adj[u][v] < B:
+                update(u, v)
+                heapq.heappush(heap, (dist[v], v))
+    if len(U_0) < k+1:
+        return B, U_0
+    else:
+        B_p = 0
+        index = 0
+        for i in range(len(U_0)):
+            if dist[U_0[i]] > B_p:
+                B_p = dist[U_0[i]]
+                index = i
+        U_0.pop(index)
+        U = U_0
+        return B_p, U        
