@@ -146,6 +146,7 @@ def findPivots(B, S):
     return (P, W)
 
 
+# Algorithm 2
 def BaseCase(B, S):
     """
     Given a bound B and a singleton source S,
@@ -176,4 +177,55 @@ def BaseCase(B, S):
                 index = i
         U_0.pop(index)
         U = U_0
-        return B_p, U        
+        return B_p, U
+
+
+# Algorithm 3
+def BMSSP(l, B, S):
+    """
+    Given an integer level 0 =< l =< ceiling(logn/t)), source set S of size =< 2^(lt),
+    and an upper bound B > max {dist(x) | x in S},
+    returns a bound B' =< B and a set of (note: all complete) vertices U
+    It is required that for every incomplete x with dist(x) < B, 
+    the shortest path to x visits some complete vertex y in S
+    """
+    if l == 0:
+        return BaseCase(B, S)  # B', U
+    (P, W) = findPivots(B, S)
+    M = 2**((l-1)*t)
+    D.Initialize(M, B)
+    for x in P:
+        D.Insert((dist[x], x))
+
+    B_p = [0]
+    i, B_p[0], U = 0, min(dist[x] for x in P) if P else B, set()
+
+    # Successful execution if D is empty (B' = B)
+    # Partial execution if len(U) > k*2**(l*t) (due to large workload, B' < B)
+    while len(U) < k*2**(l*t) and D:
+        i = i+1
+        B_i, S_i = D.Pull()
+        B_p.append(0)
+        B_p[i], U_i = BMSSP(l-1, B_i, S_i)
+        B_ip = B_p[i]
+        U = U.union(U_i)
+        K = set()
+        for u in U_i:
+            for v in adj[u]:
+                if needsUpdate(u, v):
+                    update(u, v)
+                if dist[u] + adj[u][v] >= B_i and dist[u] + adj[u][v] < B:
+                    D.Insert((dist[u] + adj[u][v], v))
+                elif dist[u] + adj[u][v] >= B_ip and dist[u] + adj[u][v] < B_i:
+                    K.add((dist[u] + adj[u][v], v))
+        for x in S_i:
+            if dist[x] >= B_ip and dist[x] < B_i:
+                K.add((dist[x], x))
+        D.BatchPrepend(K)
+
+    B_p.append(B)
+    B_p = min(B_p)
+    for x in W:
+        if dist[x] < B_p:
+            U.add(x)
+    return B_p, U  # B', U      
