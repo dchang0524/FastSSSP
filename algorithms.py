@@ -1,6 +1,7 @@
 import math
 from math import log2
 import heapq
+from D import DataStructureD
 
 N = 100000
 k = math.floor(log2(N) ** (1/3))
@@ -193,9 +194,9 @@ def BMSSP(l, B, S):
         return BaseCase(B, S)  # B', U
     (P, W) = findPivots(B, S)
     M = 2**((l-1)*t)
-    D.Initialize(M, B)
+    D = DataStructureD(M, B)
     for x in P:
-        D.Insert((dist[x], x))
+        D.insert(x, dist[x])
 
     B_p = [0]
     i, B_p[0], U = 0, min(dist[x] for x in P) if P else B, set()
