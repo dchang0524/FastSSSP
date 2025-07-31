@@ -1,3 +1,4 @@
+from sortedcontainers import SortedDict
 import bisect
 
 class Node:
@@ -9,22 +10,18 @@ class Node:
 
 class Block:
     def __init__(self, bound, is_prepended=False):
-        # Doubly-linked list head, block bounds, and flags
         self.head = None
         self.size = 0
-        self.bound = bound            # upper bound (TreeMap key)
+        self.bound = bound            # TreeMap key for this block
         self.is_prepended = is_prepended
-        self.min_val = float('inf')   # track min for separator
 
     def insert_front(self, node):
-        # Insert node at front of linked list
         node.next = self.head
         node.prev = None
         if self.head:
             self.head.prev = node
         self.head = node
         self.size += 1
-        # update bounds
         self.min_val = min(self.min_val, node.value)
         self.bound = max(self.bound, node.value)
 
@@ -42,25 +39,20 @@ class DataStructureD:
     def __init__(self, M, B):
         self.M = M
         self.B = B
-        self.node_map = {}       # key -> Node
-        self.block_map = {}      # key -> Block
-        self.D0 = []             # list of prepended Blocks
-        # D1 as a TreeMap: bound -> Block, with sorted list of keys
-        self.D1 = {}
-        self.D1_keys = []       # sorted bounds
-        self.global_min = B      # min value across all nodes
+        self.node_map = {}          # key -> Node
+        self.block_map = {}         # key -> Block
+        self.D0 = []                # list of prepended Blocks
+        self.D1 = SortedDict()      # TreeMap: bound -> Block
+        self.global_min = B
 
     def _remove_block(self, blk):
-        # Remove empty block from D0 or D1
         if blk.is_prepended:
             self.D0.remove(blk)
         else:
-            bound = blk.bound
-            del self.D1[bound]
-            self.D1_keys.remove(bound)
+            # direct delete via block.bound
+            del self.D1[blk.bound]
 
     def delete(self, key):
-        # Remove key from its block
         node = self.node_map.pop(key, None)
         if not node:
             return
@@ -70,32 +62,27 @@ class DataStructureD:
             self._remove_block(blk)
 
     def insert(self, key, value):
-        # Insert or decrease-key
-        old_node = self.node_map.get(key)
-        if old_node:
-            if value >= old_node.value:
+        old = self.node_map.get(key)
+        if old:
+            if value >= old.value:
                 return
             self.delete(key)
-        # create new node
         node = Node(key, value)
         self.node_map[key] = node
-        # update global min
         if value < self.global_min:
             self.global_min = value
-        # ensure at least one D1 block
-        if not self.D1_keys:
+        if not self.D1:
+            # first block uses B as initial bound
             blk = Block(self.B)
             self.D1[self.B] = blk
-            self.D1_keys.append(self.B)
-        # find TreeMap entry >= value
-        idx = bisect.bisect_left(self.D1_keys, value)
-        if idx == len(self.D1_keys):
+        # locate TreeMap entry >= value
+        idx = self.D1.bisect_left(value)
+        if idx == len(self.D1):
             idx -= 1
-        bound = self.D1_keys[idx]
+        bound = self.D1.iloc[idx]
         blk = self.D1[bound]
         blk.insert_front(node)
         self.block_map[key] = blk
-        # if block too large, split
         if blk.size > self.M:
             self._split_block(bound)
 
@@ -107,47 +94,45 @@ class DataStructureD:
         return self._select_median(medians)
 
     def _split_block(self, old_bound):
-        # Split block at old_bound into two around median
         blk = self.D1.pop(old_bound)
-        self.D1_keys.remove(old_bound)
-        # collect items
         items = []
         cur = blk.head
         while cur:
             items.append((cur.key, cur.value))
             cur = cur.next
         med_key, med_val = self._select_median(items)
-        # partition
-        low_items = [(k, v) for (k, v) in items if v <= med_val]
-        high_items = [(k, v) for (k, v) in items if v > med_val]
-        # build low block
+        low_items = [(k, v) for k, v in items if v <= med_val]
+        high_items = [(k, v) for k, v in items if v > med_val]
         low_blk = Block(med_val)
         for k, v in low_items:
             node = Node(k, v)
             low_blk.insert_front(node)
             self.node_map[k] = node
             self.block_map[k] = low_blk
-        # build high block
         high_blk = Block(self.B)
         for k, v in high_items:
             node = Node(k, v)
             high_blk.insert_front(node)
             self.node_map[k] = node
             self.block_map[k] = high_blk
-        # reinsert into D1
+        # reinsert both
         self.D1[low_blk.bound] = low_blk
         self.D1[high_blk.bound] = high_blk
-        bisect.insort(self.D1_keys, low_blk.bound)
-        bisect.insort(self.D1_keys, high_blk.bound)
 
     def batch_prepend(self, items):
         # items: list of (key,value) pairs
         if not items:
             return
-        # discard batch if any value > global_min
-        if any(v > self.global_min for _, v in items):
+        # keep only those with value <= current global_min and deduplicate by key (keep smallest v)
+        filtered = {}
+        for k, v in items:
+            if v <= self.global_min:
+                if k not in filtered or v < filtered[k]:
+                    filtered[k] = v
+        items = [(k, filtered[k]) for k in filtered]
+        if not items:
             return
-        # recursive chunking
+        # recursive chunking until each sublist size <= M
         def chunk(lst):
             if len(lst) <= self.M:
                 return [lst]
@@ -167,53 +152,112 @@ class DataStructureD:
             self.D0.insert(0, blk)
 
     def pull(self):
-        # collect blocks until >= M
-        selected = []
-        total = 0
-        for blk in list(self.D0):
-            selected.append(blk)
-            total += blk.size
-            if total >= self.M:
+        """
+        Pull up to M smallest unique keys using quickselect and block-tracking.
+        """
+        # 1) Collect blocks from D0 until at least M items
+        blocks0 = []
+        count0 = 0
+        for blk in self.D0:
+            blocks0.append(blk)
+            count0 += blk.size
+            if count0 >= self.M:
                 break
-        for bound in self.D1_keys:
-            if total >= self.M:
+        # 2) Collect blocks from D1 until combined >= M
+        blocks1 = []
+        count1 = 0
+        for blk in self.D1.values():
+            if count0 + count1 >= self.M:
                 break
-            blk = self.D1[bound]
-            selected.append(blk)
-            total += blk.size
-        # flatten & sort
+            blocks1.append(blk)
+            count1 += blk.size
+        # 3) Flatten into list of (key, value, block)
         items = []
-        for blk in selected:
+        for blk in blocks0 + blocks1:
             cur = blk.head
             while cur:
-                items.append((cur.key, cur.value))
+                items.append((cur.key, cur.value, blk))
                 cur = cur.next
-        items.sort(key=lambda x: x[1])
-        result = [k for k,_ in items[:self.M]]
-        # remove pulled
-        for blk in selected[:]:
-            cnt = sum(1 for k in result if self.block_map.get(k) is blk)
-            if cnt >= blk.size:
-                # remove whole
+        # 4) Quickselect threshold
+        def quickselect(lst, k):
+            if len(lst) <= 1:
+                return lst[0][1] if lst else None
+            pivot = lst[len(lst)//2][1]
+            lows = [x for x in lst if x[1] < pivot]
+            highs = [x for x in lst if x[1] > pivot]
+            pivs = [x for x in lst if x[1] == pivot]
+            if k < len(lows):
+                return quickselect(lows, k)
+            if k < len(lows) + len(pivs):
+                return pivot
+            return quickselect(highs, k - len(lows) - len(pivs))
+        if len(items) <= self.M:
+            threshold = self.B
+        else:
+            threshold = quickselect(items, self.M - 1)
+        # 5) Gather up to M keys in block order, track last blocks
+        result = []
+        seen = set()
+        last0 = None
+        last1 = None
+        for blk in blocks0 + blocks1:
+            cur = blk.head
+            while cur and len(result) < self.M:
+                k, v = cur.key, cur.value
+                if k not in seen and v <= threshold:
+                    seen.add(k)
+                    result.append(k)
+                    if blk.is_prepended:
+                        last0 = blk
+                    else:
+                        last1 = blk
+                cur = cur.next
+        # 6) Remove full and partial blocks in D0
+        if last0:
+            idx0 = blocks0.index(last0)
+            # remove all earlier blocks fully
+            for blk in blocks0[:idx0]:
                 cur = blk.head
                 while cur:
-                    k = cur.key
-                    del self.node_map[k]
-                    del self.block_map[k]
+                    kk = cur.key
+                    del self.node_map[kk]
+                    del self.block_map[kk]
                     cur = cur.next
-                if blk.is_prepended:
-                    self.D0.remove(blk)
-                else:
-                    del self.D1[blk.bound]
-                    self.D1_keys.remove(blk.bound)
-            else:
-                # partial remove
-                for k in result:
-                    if self.block_map.get(k) is blk:
-                        node = self.node_map[k]
-                        blk.remove_node(node)
-                        del self.node_map[k]
-                        del self.block_map[k]
-        # separator
-        sep = min((blk.min_val for blk in self.D0 + list(self.D1.values())), default=self.B)
-        return result, sep
+                self.D0.remove(blk)
+            # partial removal in last0
+            for k in [k for k in result if self.block_map.get(k) is last0]:
+                node = self.node_map[k]
+                last0.remove_node(node)
+                del self.node_map[k]
+                del self.block_map[k]
+        # 7) Remove full and partial blocks in D1
+        if last1:
+            idx1 = blocks1.index(last1)
+            # remove all earlier blocks fully
+            for blk in blocks1[:idx1]:
+                cur = blk.head
+                while cur:
+                    kk = cur.key
+                    del self.node_map[kk]
+                    del self.block_map[kk]
+                    cur = cur.next
+                del self.D1[blk.bound]
+            # partial removal in last1
+            for k in [k for k in result if self.block_map.get(k) is last1]:
+                node = self.node_map[k]
+                last1.remove_node(node)
+                del self.node_map[k]
+                del self.block_map[k]
+        # 8) Compute separator x by inspecting the head of the first blocks in D0 and D1
+        vals = []
+        # first prepended block
+        if self.D0 and self.D0[0].head:
+            vals.append(self.D0[0].head.value)
+        # first regular block
+        if self.D1:
+            first_bound = self.D1.keys()[0]
+            first_blk = self.D1[first_bound]
+            if first_blk.head:
+                vals.append(first_blk.head.value)
+        x = min(vals) if vals else self.B
+        return result, x
