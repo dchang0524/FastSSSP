@@ -1,34 +1,29 @@
+from sortedcontainers import SortedDict
 import bisect
-import heapq
 
 class Node:
-    __slots__ = ('key', 'prev', 'next')
-    def __init__(self, key):
+    def __init__(self, key, value):
         self.key = key
+        self.value = value
         self.prev = None
         self.next = None
 
 class Block:
-    def __init__(self, is_prepended=False):
-        # Doubly linked list of Node; head insertion
+    def __init__(self, bound, is_prepended=False):
         self.head = None
         self.size = 0
+        self.bound = bound            # TreeMap key for this block
         self.is_prepended = is_prepended
-        self.min_val = float('inf')
-        self.max_val = float('-inf')
 
-    def insert_front(self, node, arr):
-        node.prev = None
+    def insert_front(self, node):
         node.next = self.head
+        node.prev = None
         if self.head:
             self.head.prev = node
         self.head = node
         self.size += 1
-        v = arr[node.key]
-        if v < self.min_val:
-            self.min_val = v
-        if v > self.max_val:
-            self.max_val = v
+        self.min_val = min(self.min_val, node.value)
+        self.bound = max(self.bound, node.value)
 
     def remove_node(self, node):
         if node.prev:
@@ -39,253 +34,229 @@ class Block:
             self.head = node.next
         self.size -= 1
 
-    def recalc_bounds(self, arr):
-        v_min, v_max = float('inf'), float('-inf')
-        cur = self.head
-        while cur:
-            v = arr[cur.key]
-            if v < v_min:
-                v_min = v
-            if v > v_max:
-                v_max = v
-            cur = cur.next
-        self.min_val = v_min if self.size > 0 else float('inf')
-        self.max_val = v_max if self.size > 0 else float('-inf')
-
 class DataStructureD:
     def __init__(self, M, B):
-        """
-        Initialize with block size M and global bound B.
-        Keys can be any hashable objects (e.g., tuples).
-        """
         self.M = M
         self.B = B
-        self.arr = {}             # key -> current value
-        self.node_map = {}        # key -> Node
-        self.block_map = {}       # key -> Block
-        self.D0 = []              # list of prepended Blocks
-        self.D1_bounds = []       # sorted list of block.max_val for D1
-        self.D1_blocks = []       # parallel list of Blocks
+        self.node_map = {}          # key -> Node
+        self.block_map = {}         # key -> Block
+        self.D0 = []                # list of prepended Blocks
+        self.D1 = SortedDict()      # TreeMap: bound -> Block
+        self.global_min = B
 
-    def _remove_block(self, block):
-        if block.is_prepended:
-            self.D0.remove(block)
+    def _remove_block(self, blk):
+        if blk.is_prepended:
+            self.D0.remove(blk)
         else:
-            idx = self.D1_blocks.index(block)
-            self.D1_blocks.pop(idx)
-            self.D1_bounds.pop(idx)
+            # direct delete via block.bound
+            del self.D1[blk.bound]
 
-    def _find_D1_index(self, b):
-        idx = bisect.bisect_left(self.D1_bounds, b)
-        return idx if idx < len(self.D1_bounds) else len(self.D1_bounds) - 1
+    def delete(self, key):
+        node = self.node_map.pop(key, None)
+        if not node:
+            return
+        blk = self.block_map.pop(key)
+        blk.remove_node(node)
+        if blk.size == 0:
+            self._remove_block(blk)
 
-    def insert(self, key, b):
-        """
-        Insert or decrease-key: set key->b if b < old value.
-        """
-        old = self.arr.get(key)
-        if key in self.node_map:
-            if b >= old:
+    def insert(self, key, value):
+        old = self.node_map.get(key)
+        if old:
+            if value >= old.value:
                 return
-            # remove from old block
-            old_block = self.block_map[key]
-            node = self.node_map[key]
-            old_block.remove_node(node)
-            if old_block.size == 0:
-                self._remove_block(old_block)
-            else:
-                old_block.recalc_bounds(self.arr)
-            del self.node_map[key]
-            del self.block_map[key]
-        # update value
-        self.arr[key] = b
-        node = Node(key)
+            self.delete(key)
+        node = Node(key, value)
         self.node_map[key] = node
-        # place into D1
-        if not self.D1_blocks:
-            blk = Block(is_prepended=False)
-            blk.insert_front(node, self.arr)
-            self.D1_blocks.append(blk)
-            self.D1_bounds.append(blk.max_val)
-            self.block_map[key] = blk
-        else:
-            idx = self._find_D1_index(b)
-            blk = self.D1_blocks[idx]
-            blk.insert_front(node, self.arr)
-            blk.recalc_bounds(self.arr)
-            self.D1_bounds[idx] = blk.max_val
-            self.block_map[key] = blk
-            if blk.size > self.M:
-                self._split_block(idx)
+        if value < self.global_min:
+            self.global_min = value
+        if not self.D1:
+            # first block uses B as initial bound
+            blk = Block(self.B)
+            self.D1[self.B] = blk
+        # locate TreeMap entry >= value
+        idx = self.D1.bisect_left(value)
+        if idx == len(self.D1):
+            idx -= 1
+        bound = self.D1.iloc[idx]
+        blk = self.D1[bound]
+        blk.insert_front(node)
+        self.block_map[key] = blk
+        if blk.size > self.M:
+            self._split_block(bound)
 
-    def _partition_keys(self, keys, pivot_val):
-        lows, pivots, highs = [], [], []
-        for k in keys:
-            v = self.arr[k]
-            if v < pivot_val:
-                lows.append(k)
-            elif v > pivot_val:
-                highs.append(k)
-            else:
-                pivots.append(k)
-        return lows, pivots, highs
+    def _select_median(self, items):
+        if len(items) <= 5:
+            return sorted(items, key=lambda x: x[1])[len(items)//2]
+        groups = [items[i:i+5] for i in range(0, len(items), 5)]
+        medians = [sorted(g, key=lambda x: x[1])[len(g)//2] for g in groups]
+        return self._select_median(medians)
 
-    def _select(self, keys, k):
-        n = len(keys)
-        if n <= 10:
-            return sorted(keys, key=lambda x: self.arr[x])[k]
-        # groups of 5
-        groups = [keys[i:i+5] for i in range(0, n, 5)]
-        medians = [sorted(g, key=lambda x: self.arr[x])[len(g)//2] for g in groups]
-        pivot = self._select(medians, len(medians)//2)
-        pv = self.arr[pivot]
-        lows, pivots, highs = self._partition_keys(keys, pv)
-        if k < len(lows):
-            return self._select(lows, k)
-        if k < len(lows) + len(pivots):
-            return pivots[0]
-        return self._select(highs, k - len(lows) - len(pivots))
-
-    def _split_block(self, idx):
-        blk = self.D1_blocks[idx]
-        # collect keys
-        keys = []
+    def _split_block(self, old_bound):
+        blk = self.D1.pop(old_bound)
+        items = []
         cur = blk.head
         while cur:
-            keys.append(cur.key)
+            items.append((cur.key, cur.value))
             cur = cur.next
-        m = len(keys) // 2
-        med_key = self._select(keys, m)
-        pv = self.arr[med_key]
-        lows, pivots, highs = self._partition_keys(keys, pv)
-        # fix sizes
-        if len(lows) > m:
-            extra = len(lows) - m
-            for k in list(lows):
-                if extra == 0:
-                    break
-                if self.arr[k] == pv:
-                    lows.remove(k)
-                    highs.insert(0, k)
-                    extra -= 1
-        elif len(lows) < m:
-            need = m - len(lows)
-            lows += pivots[:need]
-            highs = pivots[need:] + highs
-        # build low block
-        low_block = Block(is_prepended=False)
-        for k in lows:
-            node = self.node_map[k]
-            node.prev = node.next = None
-            low_block.insert_front(node, self.arr)
-            self.block_map[k] = low_block
-        # build high block
-        high_block = Block(is_prepended=False)
-        for k in highs:
-            node = self.node_map[k]
-            node.prev = node.next = None
-            high_block.insert_front(node, self.arr)
-            self.block_map[k] = high_block
-        # replace in lists
-        self.D1_blocks[idx] = low_block
-        self.D1_bounds[idx] = low_block.max_val
-        self.D1_blocks.insert(idx+1, high_block)
-        self.D1_bounds.insert(idx+1, high_block.max_val)
+        med_key, med_val = self._select_median(items)
+        low_items = [(k, v) for k, v in items if v <= med_val]
+        high_items = [(k, v) for k, v in items if v > med_val]
+        low_blk = Block(med_val)
+        for k, v in low_items:
+            node = Node(k, v)
+            low_blk.insert_front(node)
+            self.node_map[k] = node
+            self.block_map[k] = low_blk
+        high_blk = Block(self.B)
+        for k, v in high_items:
+            node = Node(k, v)
+            high_blk.insert_front(node)
+            self.node_map[k] = node
+            self.block_map[k] = high_blk
+        # reinsert both
+        self.D1[low_blk.bound] = low_blk
+        self.D1[high_blk.bound] = high_blk
 
-    def _current_min(self):
-        candidates = [blk.min_val for blk in self.D0 + self.D1_blocks]
-        return min(candidates) if candidates else self.B
-
-    def _chunk_keys(self, keys):
-        if len(keys) <= self.M:
-            return [keys]
-        pivot = self._select(keys, len(keys)//2)
-        pv = self.arr[pivot]
-        lows, pivots, highs = self._partition_keys(keys, pv)
-        left = lows + pivots
-        chunks = []
-        chunks.extend(self._chunk_keys(left))
-        if highs:
-            chunks.extend(self._chunk_keys(highs))
-        return chunks
-
-    def batch_prepend(self, keys):
-        if not keys:
+    def batch_prepend(self, items):
+        # items: list of (key,value) pairs
+        if not items:
             return
-        # must all be <= current min
-        if any(self.arr[k] > self._current_min() for k in keys):
-            return  # discard entire batch
-        # sort by value then chunk
-        keys.sort(key=lambda k: self.arr[k])
-        for chunk in self._chunk_keys(keys):
-            blk = Block(is_prepended=True)
-            for k in chunk:
-                # remove old if exists
+        # keep only those with value <= current global_min and deduplicate by key (keep smallest v)
+        filtered = {}
+        for k, v in items:
+            if v <= self.global_min:
+                if k not in filtered or v < filtered[k]:
+                    filtered[k] = v
+        items = [(k, filtered[k]) for k in filtered]
+        if not items:
+            return
+        # recursive chunking until each sublist size <= M
+        def chunk(lst):
+            if len(lst) <= self.M:
+                return [lst]
+            med = self._select_median(lst)
+            left = [x for x in lst if x[1] <= med[1]]
+            right = [x for x in lst if x[1] > med[1]]
+            return chunk(left) + (chunk(right) if right else [])
+        for group in chunk(items):
+            blk = Block(self.B, is_prepended=True)
+            for k, v in group:
                 if k in self.node_map:
-                    ob = self.block_map[k]
-                    ob.remove_node(self.node_map[k])
-                    if ob.size == 0:
-                        self._remove_block(ob)
-                node = Node(k)
+                    self.delete(k)
+                node = Node(k, v)
+                blk.insert_front(node)
                 self.node_map[k] = node
-                self.arr[k] = self.arr.get(k)
-                blk.insert_front(node, self.arr)
                 self.block_map[k] = blk
             self.D0.insert(0, blk)
 
     def pull(self):
-        # select blocks until >= M
-        selected = []
-        total = 0
-        for blk in list(self.D0):
-            selected.append(blk)
-            total += blk.size
-            if total >= self.M:
+        """
+        Pull up to M smallest unique keys using quickselect and block-tracking.
+        """
+        # 1) Collect blocks from D0 until at least M items
+        blocks0 = []
+        count0 = 0
+        for blk in self.D0:
+            blocks0.append(blk)
+            count0 += blk.size
+            if count0 >= self.M:
                 break
-        for blk in list(self.D1_blocks):
-            if total >= self.M:
+        # 2) Collect blocks from D1 until combined >= M
+        blocks1 = []
+        count1 = 0
+        for blk in self.D1.values():
+            if count0 + count1 >= self.M:
                 break
-            selected.append(blk)
-            total += blk.size
-        # prepare sorted lists per block
-        lists = []
-        for blk in selected:
-            keys = []
+            blocks1.append(blk)
+            count1 += blk.size
+        # 3) Flatten into list of (key, value, block)
+        items = []
+        for blk in blocks0 + blocks1:
             cur = blk.head
             while cur:
-                keys.append(cur.key)
+                items.append((cur.key, cur.value, blk))
                 cur = cur.next
-            lists.append(sorted(keys, key=lambda k: self.arr[k]))
-        merged = heapq.merge(*lists, key=lambda k: self.arr[k])
-        S = []
-        for _ in range(self.M):
-            try:
-                S.append(next(merged))
-            except StopIteration:
-                break
-        # remove S from blocks
-        for blk in selected[:]:
-            count_in_blk = sum(1 for k in S if self.block_map.get(k) is blk)
-            if count_in_blk >= blk.size:
-                # remove entire block
+        # 4) Quickselect threshold
+        def quickselect(lst, k):
+            if len(lst) <= 1:
+                return lst[0][1] if lst else None
+            pivot = lst[len(lst)//2][1]
+            lows = [x for x in lst if x[1] < pivot]
+            highs = [x for x in lst if x[1] > pivot]
+            pivs = [x for x in lst if x[1] == pivot]
+            if k < len(lows):
+                return quickselect(lows, k)
+            if k < len(lows) + len(pivs):
+                return pivot
+            return quickselect(highs, k - len(lows) - len(pivs))
+        if len(items) <= self.M:
+            threshold = self.B
+        else:
+            threshold = quickselect(items, self.M - 1)
+        # 5) Gather up to M keys in block order, track last blocks
+        result = []
+        seen = set()
+        last0 = None
+        last1 = None
+        for blk in blocks0 + blocks1:
+            cur = blk.head
+            while cur and len(result) < self.M:
+                k, v = cur.key, cur.value
+                if k not in seen and v <= threshold:
+                    seen.add(k)
+                    result.append(k)
+                    if blk.is_prepended:
+                        last0 = blk
+                    else:
+                        last1 = blk
+                cur = cur.next
+        # 6) Remove full and partial blocks in D0
+        if last0:
+            idx0 = blocks0.index(last0)
+            # remove all earlier blocks fully
+            for blk in blocks0[:idx0]:
                 cur = blk.head
                 while cur:
-                    k = cur.key
-                    del self.node_map[k]; del self.block_map[k]
+                    kk = cur.key
+                    del self.node_map[kk]
+                    del self.block_map[kk]
                     cur = cur.next
-                self._remove_block(blk)
-            else:
-                # partial
-                for k in S:
-                    if self.block_map.get(k) is blk:
-                        node = self.node_map[k]
-                        blk.remove_node(node)
-                        del self.node_map[k]; del self.block_map[k]
-                blk.recalc_bounds(self.arr)
-                if not blk.is_prepended:
-                    idx = self.D1_blocks.index(blk)
-                    self.D1_bounds[idx] = blk.max_val
-        # compute next separator
-        mins = [blk.min_val for blk in self.D0 + self.D1_blocks]
-        x = min(mins) if mins else self.B
-        return S, x
+                self.D0.remove(blk)
+            # partial removal in last0
+            for k in [k for k in result if self.block_map.get(k) is last0]:
+                node = self.node_map[k]
+                last0.remove_node(node)
+                del self.node_map[k]
+                del self.block_map[k]
+        # 7) Remove full and partial blocks in D1
+        if last1:
+            idx1 = blocks1.index(last1)
+            # remove all earlier blocks fully
+            for blk in blocks1[:idx1]:
+                cur = blk.head
+                while cur:
+                    kk = cur.key
+                    del self.node_map[kk]
+                    del self.block_map[kk]
+                    cur = cur.next
+                del self.D1[blk.bound]
+            # partial removal in last1
+            for k in [k for k in result if self.block_map.get(k) is last1]:
+                node = self.node_map[k]
+                last1.remove_node(node)
+                del self.node_map[k]
+                del self.block_map[k]
+        # 8) Compute separator x by inspecting the head of the first blocks in D0 and D1
+        vals = []
+        # first prepended block
+        if self.D0 and self.D0[0].head:
+            vals.append(self.D0[0].head.value)
+        # first regular block
+        if self.D1:
+            first_bound = self.D1.keys()[0]
+            first_blk = self.D1[first_bound]
+            if first_blk.head:
+                vals.append(first_blk.head.value)
+        x = min(vals) if vals else self.B
+        return result, x
