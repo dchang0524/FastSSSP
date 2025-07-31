@@ -1,8 +1,8 @@
 import random
 
-N = 7
-tree_weights = random.sample(range(1, 20), N-1)
-extra_weights = random.sample(range(1, 10), N-1)
+N = 1000
+tree_weights = random.choices(range(1, 20), k = N-1)
+extra_weights = random.choices(range(1, 10), k = N-1)
 adj = []
 
 for i in range(N):
