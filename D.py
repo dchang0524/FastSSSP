@@ -26,7 +26,6 @@ class Block:
         self.bound = max(self.bound, node.value)
 
     def remove_node(self, node):
-        # Unlink node
         if node.prev:
             node.prev.next = node.next
         if node.next:
