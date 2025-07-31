@@ -216,13 +216,13 @@ def BMSSP(l, B, S):
                 if needsUpdate(u, v):
                     update(u, v)
                 if dist[u] + adj[u][v] >= B_i and dist[u] + adj[u][v] < B:
-                    D.Insert((dist[u] + adj[u][v], v))
+                    D.insert(v, dist[u] + adj[u][v])
                 elif dist[u] + adj[u][v] >= B_ip and dist[u] + adj[u][v] < B_i:
-                    K.add((dist[u] + adj[u][v], v))
+                    K.add((v, dist[u] + adj[u][v]))
         for x in S_i:
             if dist[x] >= B_ip and dist[x] < B_i:
-                K.add((dist[x], x))
-        D.BatchPrepend(K)
+                K.add((x, dist[x]))
+        D.batch_prepend(K)
 
     B_p.append(B)
     B_p = min(B_p)
