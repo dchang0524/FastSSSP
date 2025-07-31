@@ -1,23 +1,40 @@
 import random
 
-N = 1000
-tree_weights = random.choices(range(1, 20), k = N-1)
-extra_weights = random.choices(range(1, 10), k = N-1)
+N = 100000
+
 adj = []
+existing_edges = set() # Use a set for O(1) average time lookups
 
-for i in range(N):
-    if i == 0:
-        continue
+# --- Step 1: Generate a spanning tree (O(N) time) ---
+print("Generating spanning tree...")
+for i in range(1, N):
     j = random.randrange(0, i)
-    adj.append((j, i, tree_weights[i-1]))
+    weight = random.randint(1, 20)
+    
+    # Add edge to both representations
+    adj.append((j, i, weight))
+    existing_edges.add((j, i))
 
+# --- Step 2: Add N-1 extra edges (O(N) time) ---
+print("Adding extra edges...")
 count = 0
 while count < N-1:
-    count += 1
-    u = random.randrange(1, N)
-    v = random.randrange(0, u)
-    if (v, u, tree_weights[u-1]) in adj:
+    u = random.randrange(0, N)
+    v = random.randrange(0, N)
+    
+    # Ensure u != v and we don't create parallel edges
+    if u == v:
         continue
-    adj.append((u, v, extra_weights[count-1]))
+    
+    # To make the check canonical, always store the smaller index first
+    edge = tuple(sorted((u, v)))
+    if edge in existing_edges:
+        continue
+        
+    weight = random.randint(1, 10)
+    adj.append((edge[1], edge[0], weight))
+    existing_edges.add(edge)
+    count += 1
 
-print(adj)
+print("Graph is generated.")
+print(adj[N-100:N+100])
