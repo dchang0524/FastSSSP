@@ -4,6 +4,7 @@ import heapq
 from D import DataStructureD
 
 N = 100000
+M = 0
 k = math.floor(log2(N) ** (1/3))
 t = math.floor(log2(N) ** (2/3))
 start = 1
@@ -12,9 +13,6 @@ adj = [set() for _ in range(N)]
 dist = [-1] * N  # sum of path weights
 depth = [-1] * N   # number of vertices traversed
 pred = [-1] * N  #last previous vertex visited in path
-
-
-
 
 #Graph Transformation
 def transformGraph(graph: dict):
@@ -103,6 +101,10 @@ def transformGraph(graph: dict):
     dist = [-1] * N
     depth = [-1] * N
     pred = [-1] * N
+
+    ###########################
+    # Do we have to recompute k and t?
+    ###########################
           
 
 #Path Comparison
@@ -115,26 +117,29 @@ def cmp(u, v):
     """
     if dist[u] == -1 or dist[v] == -1:
         return 0
+    if u == v:
+        return 0
     if dist[u] != dist[v]:
-        return (dist[v]-dist[u])/abs(dist[v]-dist[u])
+        return (dist[v]-dist[u])//abs(dist[v]-dist[u])
     if depth[u] != depth[v]:
-        return (depth[v]-depth[u])/abs(depth[v]-depth[u])
-    return (v-u)/abs(v-u)
+        return (depth[v]-depth[u])//abs(depth[v]-depth[u])
+    return (v-u)//abs(v-u)
 
-#Check if edge (u,v) needs to be relaxed(added)
+#Check if edge (u,v) needs to be relaxed(added). Returns 1 if it does, -1 otherwise
 def needsUpdate(u, v):
     if dist[u] == -1:
         return 0
     weight = adj[u][v]
     if (weight + dist[u] != dist[v]):
         cDist = weight + dist[u]
-        return (dist[v] - cDist)/abs(dist[v] - cDist) 
+        return (dist[v] - cDist)//abs(dist[v] - cDist) 
     if (depth[u] + 1 != depth[v]):
-        return (depth[v] - depth[u] - 1)/abs(depth[v] - depth[u] - 1)
+        return (depth[v] - depth[u] - 1)//abs(depth[v] - depth[u] - 1)
     if pred[v] == u:
         return 1
     return cmp(u, pred[v])
 
+#Relaxes edge (u,v)
 def update(u, v):
     cWeight = adj[u][v]
     dist[v] = dist[u] + cWeight
