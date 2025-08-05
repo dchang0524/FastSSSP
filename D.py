@@ -14,7 +14,6 @@ class Block:
     def __init__(self, bound_tuple, is_prepended=False):
         self.head = None
         self.size = 0
-        # The bound is now a tuple
         self.bound = bound_tuple
         self.is_prepended = is_prepended
 
@@ -38,7 +37,7 @@ class Block:
 class DataStructureD:
     def __init__(self, M, B_tuple):
         self.M = M # maximum size of a block
-        # B is now an "infinity" tuple, e.g., (float('inf'), float('inf'), float('inf'))
+        # B is now an tuple, e.g., (B, float('inf'), float('inf'))
         self.B = B_tuple
         self.node_map = {}          # key -> Node
         self.block_map = {}         # key -> Block
@@ -192,18 +191,17 @@ class DataStructureD:
             self.D0.insert(0, blk)
 
     def pull(self):
-        # 1. Collect a prefix of blocks from D0 and D1 until we have at least M items.
+        """
+        Pulls up to M smallest unique keys using an efficient block-based deletion.
+        """
+        # 1. Collect a prefix of blocks until we have at least M items.
         collected_blocks = []
         item_count = 0
-        
-        # From prepended blocks (D0)
         for blk in self.D0:
             collected_blocks.append(blk)
             item_count += blk.size
             if item_count >= self.M:
                 break
-                
-        # From regular blocks (D1) if needed
         if item_count < self.M:
             for _, blk in self.D1.items():
                 collected_blocks.append(blk)
@@ -211,50 +209,64 @@ class DataStructureD:
                 if item_count >= self.M:
                     break
 
-        # 2. Flatten the items from ONLY the collected blocks.
+        # 2. Flatten items from collected blocks and find the M smallest.
         items = []
         for blk in collected_blocks:
             cur = blk.head
             while cur:
                 items.append((cur.key, cur.value))
                 cur = cur.next
-
         if not items:
             return [], self.B
 
-        # 3. Find the smallest M items from the collected list.
         if len(items) <= self.M:
-            # All collected items are part of the result
             result_keys = [item[0] for item in items]
         else:
-            # Use quickselect to find the threshold value for the M smallest items
+            # Find the value of the M-th smallest item.
             threshold_tuple = self.quickselect(items, self.M - 1)
-            
-            # Collect all candidates with value <= threshold
-            candidates = [item for item in items if item[1] <= threshold_tuple]
-            
-            # Sort candidates to break ties and ensure we take exactly M smallest
-            candidates.sort(key=lambda x: x[1])
-            result_keys = [item[0] for item in candidates[:self.M]]
+            # Since no ties are guaranteed, we can directly collect items <= threshold.
+            result_keys = [item[0] for item in items if item[1] <= threshold_tuple]
+        
+        result_keys_set = set(result_keys)
 
-        # 4. Delete the pulled keys from the data structure.
-        for key in result_keys:
-            self.delete(key)
+        # 3. *** Optimized Deletion Step ***
+        for blk in collected_blocks:
+            # Check if all keys to be pulled from this block are in the result set
+            keys_in_block_to_delete = []
+            cur = blk.head
+            is_partial = False
+            while cur:
+                if cur.key in result_keys_set:
+                    keys_in_block_to_delete.append(cur.key)
+                else:
+                    is_partial = True # The block contains keys not being pulled
+                cur = cur.next
+            
+            if not keys_in_block_to_delete:
+                continue
 
-        # 5. Compute the new separator 'x' (the smallest value remaining).
+            if not is_partial:
+                # This is a full block to be deleted
+                self._remove_block(blk)
+                for key in keys_in_block_to_delete:
+                    if key in self.node_map: del self.node_map[key]
+                    if key in self.block_map: del self.block_map[key]
+            else:
+                # This is a partial block, delete nodes individually
+                for key in keys_in_block_to_delete:
+                    # self.delete(key) is safe here because we only do it for a few nodes
+                    # in the boundary blocks, not for all M nodes.
+                    self.delete(key)
+
+        # 4. Compute the new separator 'x' (the smallest value remaining).
         new_min_vals = []
-        # Check the first remaining prepended block
         if self.D0 and self.D0[0].head:
             new_min_vals.append(self.D0[0].head.value)
-            
-        # Check the first remaining regular block
         if self.D1:
-            # Get the first key (bound) from the sorted dictionary
             first_bound = self.D1.keys()[0]
             first_blk = self.D1[first_bound]
             if first_blk.head:
                 new_min_vals.append(first_blk.head.value)
-                
         x_tuple = min(new_min_vals) if new_min_vals else self.B
 
         return result_keys, x_tuple
