@@ -22,8 +22,6 @@ class Block:
             self.head.prev = node
         self.head = node
         self.size += 1
-        self.min_val = min(self.min_val, node.value)
-        self.bound = max(self.bound, node.value)
 
     def remove_node(self, node):
         if node.prev:
@@ -36,8 +34,8 @@ class Block:
 
 class DataStructureD:
     def __init__(self, M, B):
-        self.M = M
-        self.B = B
+        self.M = M # maximum size of a block
+        self.B = B # upper bound for values
         self.node_map = {}          # key -> Node
         self.block_map = {}         # key -> Block
         self.D0 = []                # list of prepended Blocks
@@ -76,8 +74,8 @@ class DataStructureD:
             self.D1[self.B] = blk
         # locate TreeMap entry >= value
         idx = self.D1.bisect_left(value)
-        if idx == len(self.D1):
-            idx -= 1
+            #if idx == len(self.D1): 
+            # To ignore this case, we must insure the last block always has a upper bound B, and that all values inserted are <= B
         bound = self.D1.iloc[idx]
         blk = self.D1[bound]
         blk.insert_front(node)
@@ -92,6 +90,29 @@ class DataStructureD:
         medians = [sorted(g, key=lambda x: x[1])[len(g)//2] for g in groups]
         return self._select_median(medians)
 
+    def quickselect(self, lst, k):
+        """
+        Finds the k-th smallest value in a list using the median-of-medians pivot strategy.
+        """
+        if not lst:
+            return None
+            
+        # This call now works because quickselect has 'self'
+        median_tuple = self._select_median(lst)
+        pivot = median_tuple[1]
+
+        lows = [x for x in lst if x[1] < pivot]
+        highs = [x for x in lst if x[1] > pivot]
+        pivs = [x for x in lst if x[1] == pivot]
+
+        # The recursive calls now also work correctly
+        if k < len(lows):
+            return self.quickselect(lows, k)
+        elif k < len(lows) + len(pivs):
+            return pivot
+        else:
+            return self.quickselect(highs, k - len(lows) - len(pivs))
+
     def _split_block(self, old_bound):
         blk = self.D1.pop(old_bound)
         items = []
@@ -99,7 +120,7 @@ class DataStructureD:
         while cur:
             items.append((cur.key, cur.value))
             cur = cur.next
-        med_key, med_val = self._select_median(items)
+        med_val = self._select_median(items)
         low_items = [(k, v) for k, v in items if v <= med_val]
         high_items = [(k, v) for k, v in items if v > med_val]
         low_blk = Block(med_val)
@@ -108,7 +129,7 @@ class DataStructureD:
             low_blk.insert_front(node)
             self.node_map[k] = node
             self.block_map[k] = low_blk
-        high_blk = Block(self.B)
+        high_blk = Block(old_bound)
         for k, v in high_items:
             node = Node(k, v)
             high_blk.insert_front(node)
@@ -139,7 +160,7 @@ class DataStructureD:
             left = [x for x in lst if x[1] <= med[1]]
             right = [x for x in lst if x[1] > med[1]]
             return chunk(left) + (chunk(right) if right else [])
-        for group in chunk(items):
+        for group in reversed(chunk(items)):
             blk = Block(self.B, is_prepended=True)
             for k, v in group:
                 if k in self.node_map:
@@ -178,22 +199,10 @@ class DataStructureD:
                 items.append((cur.key, cur.value, blk))
                 cur = cur.next
         # 4) Quickselect threshold
-        def quickselect(lst, k):
-            if len(lst) <= 1:
-                return lst[0][1] if lst else None
-            pivot = lst[len(lst)//2][1]
-            lows = [x for x in lst if x[1] < pivot]
-            highs = [x for x in lst if x[1] > pivot]
-            pivs = [x for x in lst if x[1] == pivot]
-            if k < len(lows):
-                return quickselect(lows, k)
-            if k < len(lows) + len(pivs):
-                return pivot
-            return quickselect(highs, k - len(lows) - len(pivs))
         if len(items) <= self.M:
             threshold = self.B
         else:
-            threshold = quickselect(items, self.M - 1)
+            threshold = self.quickselect(items, self.M - 1)
         # 5) Gather up to M keys in block order, track last blocks
         result = []
         seen = set()

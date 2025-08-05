@@ -18,40 +18,91 @@ pred = [-1] * N  #last previous vertex visited in path
 
 #Graph Transformation
 def transformGraph(graph: dict):
-    new_vertices = [[] for _ in range(N)]
-    new_adj = {}
+    global N, M, start, adj, vertices, dist, depth, pred
 
-    # create new vertices (neighbor pairs)
-    for i in range(N):
-        for x in adj[i]:
-            new_vertices[i].append((i, x[0]))
-            new_vertices[x[0]].append((x[0], i))
+    # Keep a reference to the original graph structure to read from
+    old_adj = adj
+    old_start = start
+    old_n = N
+
+    # 1. Find all neighbors (incoming and outgoing) for each vertex.
+    all_neighbors = [[] for _ in range(old_n)]
+    for u in range(old_n):
+        # old_adj is a list of sets of (neighbor, weight) tuples
+        for v, _ in old_adj[u]:
+            all_neighbors[u].append(v)
+            all_neighbors[v].append(u)
     
-    for v_pairs in new_vertices:
-        for x in v_pairs:
-            new_adj[x] = set()
+    # Handle duplicates
+    for i in range(old_n):
+        all_neighbors[i] = sorted(list(set(all_neighbors[i])))
+
+    # 2. --- Vertex Renumbering Step ---
+    # Create new vertices x_uv and map them to new integer IDs.
+    node_map = {}
+    new_node_counter = 0
+    for u in range(old_n):
+        for v in all_neighbors[u]:
+            if (u, v) not in node_map:
+                node_map[(u, v)] = new_node_counter
+                new_node_counter += 1
     
-    # make a cycle per original vertex
-    i = 0
-    while i < N:
-        j = 0
-        while j < len(new_vertices[i]):
-            if j < len(new_vertices[i]) - 1:
-                new_adj[new_vertices[i][j]].add((new_vertices[i][j+1], 0))
-            else:
-                new_adj[new_vertices[i][j]].add((new_vertices[i][0], 0))
-            j = j+1
-        i = i+1
-    
-    # add edges between vertices with weights same as original
-    for key in adj:
-        for x in adj[key]:
-            new_adj[(key, x[0])].add(((x[0], key), x[1]))
-    N = sum(len(sublist) for sublist in new_vertices)
-    adj = new_adj
-    start = (start, next(iter(adj[start])))
-    vertices = new_vertices
-    return new_adj
+    new_n = new_node_counter
+    # The new adjacency list will be a list of dictionaries.
+    new_adj_list = [{} for _ in range(new_n)]
+    new_m = 0
+
+    # 3. --- Cycle Creation Step ---
+    # Create cycles with zero-weight edges.
+    for u in range(old_n):
+        cycle_nodes = all_neighbors[u]
+        if len(cycle_nodes) > 1:
+            for i in range(len(cycle_nodes)):
+                v1 = cycle_nodes[i]
+                v2 = cycle_nodes[(i + 1) % len(cycle_nodes)]
+                
+                node1_id = node_map.get((u, v1))
+                node2_id = node_map.get((u, v2))
+
+                if node1_id is not None and node2_id is not None:
+                    # Use dictionary assignment for direct access
+                    new_adj_list[node1_id][node2_id] = 0
+                    new_m += 1
+
+    # 4. --- Original Edge Weight Step ---
+    # Add edges corresponding to the original graph's edges.
+    for u in range(old_n):
+        # old_adj is a list of sets of (neighbor, weight) tuples
+        for v, w in old_adj[u]:
+            node_uv_id = node_map.get((u, v))
+            node_vu_id = node_map.get((v, u))
+
+            if node_uv_id is not None and node_vu_id is not None:
+                # Use dictionary assignment for direct access
+                new_adj_list[node_uv_id][node_vu_id] = w
+                new_m += 1
+
+    # 5. --- Determine New Start Node ---
+    new_start = -1
+    if old_adj[old_start]:
+        try:
+            first_neighbor_v, _ = next(iter(old_adj[old_start]))
+            new_start = node_map.get((old_start, first_neighbor_v), -1)
+        except StopIteration:
+            # old_start has no outgoing edges
+            pass
+
+    # --- Update Global Variables ---
+    N = new_n
+    M = new_m
+    adj = new_adj_list # adj is now a list of dictionaries
+    start = new_start
+    vertices = list(range(N))
+
+    # Re-initialize path-finding arrays for the new graph size
+    dist = [-1] * N
+    depth = [-1] * N
+    pred = [-1] * N
           
 
 #Path Comparison
