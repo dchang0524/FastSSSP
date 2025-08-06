@@ -1,12 +1,12 @@
 import random
 
-N = 100000
+N = 1000
 
 adj = []
 existing_edges = set() # Use a set for O(1) average time lookups
 
 # --- Step 1: Generate a spanning tree (O(N) time) ---
-print("Generating spanning tree...")
+# print("Generating spanning tree...")
 for i in range(1, N):
     j = random.randrange(0, i)
     weight = random.randint(1, 20)
@@ -16,7 +16,7 @@ for i in range(1, N):
     existing_edges.add((j, i))
 
 # --- Step 2: Add N-1 extra edges (O(N) time) ---
-print("Adding extra edges...")
+# print("Adding extra edges...")
 count = 0
 while count < N-1:
     u = random.randrange(0, N)
@@ -36,5 +36,5 @@ while count < N-1:
     existing_edges.add(edge)
     count += 1
 
-print("Graph is generated.")
-print(adj[N-100:N+100])
+#print("Graph is generated.")
+# print(adj[N-100:N+100])
