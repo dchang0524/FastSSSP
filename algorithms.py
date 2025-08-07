@@ -250,9 +250,9 @@ def BMSSP(l, B, S):
                 if needsUpdate(u, v):
                     update(u, v)
                 if dist[u] + adj[u][v] >= B_i and dist[u] + adj[u][v] < B:
-                    D.insert(v, (dist[u] + adj[u][v], depth[u] + 1, u))
+                    D.insert(v, (dist[u] + adj[u][v], depth[u] + 1, u, v))
                 elif dist[u] + adj[u][v] >= B_last and dist[u] + adj[u][v] < B_i:
-                    K.append((v, (dist[u] + adj[u][v], depth[u] + 1, u)))
+                    K.append((v, (dist[u] + adj[u][v], depth[u] + 1, u, v)))
         for x in S_i:
             if dist[x] >= B_last and dist[x] < B_i:
                 K.append((x, (dist[x], depth[x], pred[x])))

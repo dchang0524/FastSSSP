@@ -16,6 +16,8 @@ class Block:
         self.size = 0
         self.bound = bound_tuple
         self.is_prepended = is_prepended
+        self.prev_block = None
+        self.next_block = None
 
     def insert_front(self, node):
         node.next = self.head
@@ -43,22 +45,28 @@ class DataStructureD:
             self.B_tuple = B
             self.B_scalar = B[0]
         else:
-            self.B_tuple = (B, float('inf'), float('inf'))
+            self.B_tuple = (B, float('inf'), float('inf'), float('inf'))
             self.B_scalar = B
 
         # B is now an tuple, e.g., (B, float('inf'), float('inf'))
         self.B = self.B_tuple
         self.node_map = {}          # key -> Node
         self.block_map = {}         # key -> Block
-        self.D0 = []                # list of prepended Blocks
+        self.d0_head = None
         self.D1 = SortedDict()      # TreeMap: bound_tuple -> Block
         # global_min is also a tuple now
         self.global_min = self.B
         self.nnz = 0                # ★ 전체 노드 개수
 
-    def _remove_block(self, blk):
+    def _remove_block(self, blk : Block):
         if blk.is_prepended:
-            self.D0.remove(blk)
+            #O(1) removal from doubly linked list
+            if blk.prev_block:
+                blk.prev_block.next_block = blk.next_block
+            if blk.next_block:
+                blk.next_block.prev_block = blk.prev_block
+            if self.d0_head is blk:
+                self.d0_head = blk.next_block
         else:
             del self.D1[blk.bound]
 
@@ -68,9 +76,11 @@ class DataStructureD:
             return
         blk = self.block_map.pop(key)
         blk.remove_node(node)
-        self.nnz -= 1               # ★ 카운터 갱신
+        self.nnz -= 1
         if blk.size == 0:
-            self._remove_block(blk)
+            #Never delete the block with the infinity bound
+            if blk.bound != self.B:
+                self._remove_block(blk)
 
     def insert(self, key, value_tuple):
         old_node = self.node_map.get(key)
@@ -96,7 +106,7 @@ class DataStructureD:
 
         # idx 가 len(keys) 인 경우 → 마지막 블록을 선택
         if idx == len(keys):
-            bound_tuple = keys[-1]
+            bound_tuple = keys[-1] #works if guranteed value of key <= B
         else:
             bound_tuple = keys[idx]
 
@@ -161,12 +171,14 @@ class DataStructureD:
             node = Node(k, v_tuple)
             low_blk.insert_front(node)
             self.block_map[k] = low_blk
+            self.node_map[k] = node
         
         high_blk = Block(old_bound_tuple)
         for k, v_tuple in high_items:
             node = Node(k, v_tuple)
             high_blk.insert_front(node)
             self.block_map[k] = high_blk
+            self.node_map[k] = node
         
         self.D1[low_blk.bound] = low_blk
         # Only add high_blk if it's not empty
@@ -174,44 +186,52 @@ class DataStructureD:
             self.D1[high_blk.bound] = high_blk
 
     def batch_prepend(self, items):
-        # items: list of (key, value_tuple) pairs
         if not items:
             return
         
         filtered = {}
         for k, v_tuple in items:
-            if v_tuple < self.global_min:
-                if k not in filtered or v_tuple < filtered[k]:
-                    filtered[k] = v_tuple
+            #if v_tuple < self.global_min:
+            if k not in filtered or v_tuple < filtered[k]:
+                filtered[k] = v_tuple
         
-        items = list(filtered.items())
-        if not items:
+        items_to_prepend = list(filtered.items())
+        if not items_to_prepend:
             return
-        
+
         def chunk(lst):
-            if len(lst) <= self.M:
-                return [lst]
-            # _select_median expects [(key, value)], so we pass the list directly
+            if not lst: return []
+            if len(lst) <= self.M: return [lst]
             med_item = self._select_median(lst)
             med_tuple = med_item[1]
-            left = [x for x in lst if x[1] <= med_tuple]
-            right = [x for x in lst if x[1] > med_tuple and x != med_item]
-            return chunk(left) + (chunk(right) if right else [])
+            left = [x for x in lst if x[1] < med_tuple]
+            pivots = [x for x in lst if x[1] == med_tuple]
+            right = [x for x in lst if x[1] > med_tuple]
+            left.extend(pivots)
+            return chunk(left) + chunk(right)
 
-        for group in reversed(chunk(items)):
-            # The bound doesn't matter as much for D0 blocks, but should be a tuple
-            blk = Block(self.B, is_prepended=True)
+        for group in reversed(chunk(items_to_prepend)):
+            if not group: continue
+            
+            new_blk = Block(self.B, is_prepended=True)
             for k, v_tuple in group:
                 if k in self.node_map:
-                    self.delete(k)          # 중복이면 nnz-1 처리
+                    self.delete(k)
                 node = Node(k, v_tuple)
-                blk.insert_front(node)
-
-                self.nnz += 1                     # ★ 한 노드 삽입 → nnz +1
-                
+                new_blk.insert_front(node)
+                self.nnz += 1
                 self.node_map[k] = node
-                self.block_map[k] = blk
-            self.D0.insert(0, blk)
+                self.block_map[k] = new_blk
+            
+            # --- FIX: Correctly link the new block into the D0 list ---
+            new_blk.next_block = self.d0_head
+            if self.d0_head:
+                self.d0_head.prev_block = new_blk
+            self.d0_head = new_blk
+        
+        # Update global_min after all prepends are done
+        if self.d0_head and self.d0_head.head:
+            self.global_min = self.d0_head.head.value
 
     def pull(self):
         """
@@ -225,11 +245,12 @@ class DataStructureD:
         collected = []
         count = 0
 
-        for blk in self.D0:                      # first scan prepended blocks
-            collected.append(blk)
-            count += blk.size
-            if count >= self.M:
-                break
+        current_block = self.d0_head #Scan prepended blocks
+        while current_block:
+            collected.append(current_block)
+            count += current_block.size
+            if count >= self.M: break
+            current_block = current_block.next_block
 
         if count < self.M:                       # then scan inserted blocks
             for _, blk in self.D1.items():
@@ -251,21 +272,12 @@ class DataStructureD:
 
         # 3)  ── Select at most M smallest items  (ties ⇒ arbitrary truncation) ────
         if len(items) > self.M:
-            # find the M-th smallest value-tuple via quick-select (O(M))
+            # Since values are unique, quickselect finds a unique threshold
             threshold = self.quickselect(items, self.M - 1)
-
-            # strictly smaller values
-            smaller = [kv for kv in items if kv[1] < threshold]
-
-            # ties that are == threshold
-            equal   = [kv for kv in items if kv[1] == threshold]
-
-            needed  = self.M - len(smaller)
-            equal   = equal[:needed]            # cut ties so that |S| ≤ M
-
-            chosen  = smaller + equal
+            # Collecting items <= threshold will yield exactly M items
+            chosen = [kv for kv in items if kv[1] <= threshold]
         else:
-            chosen  = items                     # already ≤ M
+            chosen = items
 
         S_keys = {kv[0] for kv in chosen}       # set of keys to return
 
@@ -275,9 +287,9 @@ class DataStructureD:
 
         # 5)  ── Compute new separator x  (= smallest remaining value) ─────────────
         remaining = []
-        if self.D0 and self.D0[0].head:
-            remaining.append(self.D0[0].head.value)
-        if self.D1:
+        if self.d0_head and self.d0_head.head:
+            remaining.append(self.d0_head.head.value)
+        if self.D1 and self.D1.keys():
             first_blk = self.D1[self.D1.keys()[0]]
             if first_blk.head:
                 remaining.append(first_blk.head.value)
