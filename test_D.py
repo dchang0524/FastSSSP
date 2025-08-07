@@ -1,7 +1,3 @@
-#!/usr/bin/env python3
-# debug_D_updated.py
-# Updated debugger for DataStructureD with enforced batch_prepend constraints
-
 import random
 import sys
 # Assuming your file is named D.py
@@ -91,10 +87,10 @@ class DebugDataStructureD(DataStructureD):
 # --- Main Debugging Function ---
 def main():
     print("--- Running Randomized Debugger (Mixed Operations) ---")
-    random.seed(200)  # Use the same seed that caused the failure
+    random.seed(100)  # Use the same seed that caused the failure
 
-    num_operations = 1000
-    M = 10
+    num_operations = 10000
+    M = 100
     B_tuple = (float('inf'), float('inf'), float('inf'), float('inf'))
     
     ground_truth = {}

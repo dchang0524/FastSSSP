@@ -17,8 +17,8 @@ depth = [INF] * N   # number of vertices traversed
 pred = [-1] * N  #last previous vertex visited in path
 
 #Graph Transformation
-def transformGraph(graph: dict):
-    global N, M, start, adj, vertices, dist, depth, pred
+def transformGraph():
+    global N, M, start, adj, vertices, dist, depth, pred, k, t
 
     # Keep a reference to the original graph structure to read from
     old_adj = adj
@@ -98,7 +98,8 @@ def transformGraph(graph: dict):
     adj = new_adj_list # adj is now a list of dictionaries
     start = new_start
     vertices = list(range(N))
-
+    k = math.floor(log2(N) ** (1/3))
+    t = math.floor(log2(N) ** (2/3))
     # ★ sentinel = ∞ 로 초기화 ★
     INF = math.inf
     dist  = [INF] * N
@@ -106,10 +107,6 @@ def transformGraph(graph: dict):
     pred  = [-1]  * N
     dist[start]  = 0
     depth[start] = 0
-
-    ###########################
-    # Do we have to recompute k and t?
-    ###########################
           
 
 def needsUpdate(u, v):

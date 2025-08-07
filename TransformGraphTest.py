@@ -32,7 +32,7 @@ def main():
 
     # --- 3. Run the graph transformation function ---
     print("\n... Transforming graph ...")
-    gt.transformGraph(gt.adj)
+    gt.transformGraph()
     print("... Transformation complete! ...")
 
     # --- 4. Print the state of the transformed graph ---
