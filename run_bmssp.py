@@ -25,7 +25,7 @@ def main():
     build_graph_from_edges(edges, N)
 
     # --- 필수: 그래프 변형 -------------------------------------
-    alg.transformGraph(alg.adj)
+    alg.transformGraph()
 
     # --- 변형 후 배열 재초기화 ---------------------------------
     INF = math.inf

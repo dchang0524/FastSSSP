@@ -75,12 +75,21 @@ class DataStructureD:
         if not node:
             return
         blk = self.block_map.pop(key)
+
+        #print(f"[DEL] key={key} node_found={node is not None} blk_found={blk is not None}")
+
         blk.remove_node(node)
         self.nnz -= 1
         if blk.size == 0:
-            #Never delete the block with the infinity bound
-            if blk.bound != self.B:
+            if blk.is_prepended:
+                # D0: always unlink empty blocks
                 self._remove_block(blk)
+            else:
+                # D1: keep the ∞ block even if empty; remove others
+                if blk.bound != self.B:
+                    self._remove_block(blk)
+                    #print(f"[DEL] removed empty block with bound={blk.bound}")
+
 
     def insert(self, key, value_tuple):
         old_node = self.node_map.get(key)
@@ -131,14 +140,11 @@ class DataStructureD:
         return self._select_median(medians)
 
     def quickselect(self, lst, k):
+        #lst contains <key, value>
         if not lst:
             return None
         
-        # The median is a tuple: (key, value_tuple)
-        median_item = self._select_median(lst)
-        # The pivot is the value_tuple itself
-        pivot = median_item[1]
-
+        pivot = self._select_median(lst)[1]
         lows = [x for x in lst if x[1] < pivot]
         highs = [x for x in lst if x[1] > pivot]
         pivs = [x for x in lst if x[1] == pivot]
@@ -150,6 +156,7 @@ class DataStructureD:
         else:
             return self.quickselect(highs, k - len(lows) - len(pivs))
 
+
     def _split_block(self, old_bound_tuple):
         blk = self.D1.pop(old_bound_tuple)
         items = []
@@ -159,9 +166,7 @@ class DataStructureD:
             cur = cur.next
 
         # median_item is (key, value_tuple)
-        median_item = self._select_median(items)
-        # med_val is the value_tuple
-        med_val_tuple = median_item[1]
+        med_val_tuple = self.quickselect(items, (len(items)-1) // 2)
 
         low_items = [(k, v) for k, v in items if v <= med_val_tuple]
         high_items = [(k, v) for k, v in items if v > med_val_tuple]
@@ -199,11 +204,10 @@ class DataStructureD:
         if not items_to_prepend:
             return
 
-        def chunk(lst):
+        def chunk(lst): #slower
             if not lst: return []
             if len(lst) <= self.M: return [lst]
-            med_item = self._select_median(lst)
-            med_tuple = med_item[1]
+            med_tuple = self.quickselect(lst, self.M // 2)
             left = [x for x in lst if x[1] < med_tuple]
             pivots = [x for x in lst if x[1] == med_tuple]
             right = [x for x in lst if x[1] > med_tuple]
@@ -241,10 +245,13 @@ class DataStructureD:
         After the call every key in S is physically removed from the data structure.
         If the structure becomes empty we return (B, ∅).
         """
+        if self.nnz == 0:
+            print("================Pulling when D is emtpy=================")
+            return
         # 1)  ── Collect a prefix of blocks until ≥ M items ─────────────────────────
         collected = []
+        
         count = 0
-
         current_block = self.d0_head #Scan prepended blocks
         while current_block:
             collected.append(current_block)
@@ -252,12 +259,14 @@ class DataStructureD:
             if count >= self.M: break
             current_block = current_block.next_block
 
+        count = 0
         if count < self.M:                       # then scan inserted blocks
             for _, blk in self.D1.items():
                 collected.append(blk)
                 count += blk.size
                 if count >= self.M:
                     break
+
 
         # 2)  ── Flatten the nodes inside the collected blocks ─────────────────────
         items = []                               # [(key, value_tuple)]
@@ -267,8 +276,8 @@ class DataStructureD:
                 items.append((n.key, n.value))
                 n = n.next
 
-        if not items:                            # nothing left in the structure
-            return self.B[0] if isinstance(self.B, tuple) else self.B, set()
+        #if not items:                            # nothing left in the structure
+            #return self.B[0] if isinstance(self.B, tuple) else self.B, set()
 
         # 3)  ── Select at most M smallest items  (ties ⇒ arbitrary truncation) ────
         if len(items) > self.M:
@@ -298,6 +307,44 @@ class DataStructureD:
         x_scalar = x_tuple[0] if isinstance(x_tuple, tuple) else x_tuple
 
         # 6)  ── Return (bound, keys) in the order expected by BMSSP ───────────────
+        if not S_keys:
+            print("=================== Returning empty set S_keys =======================")
+            print(f"M = {self.M}, collected_blocks = {len(collected)}, total_items = {len(items)}")
+            # --- Dump D0 ---
+            print("D0 blocks:")
+            blk = self.d0_head
+            idx = 0
+            while blk:
+                vals = []
+                n = blk.head
+                while n:
+                    vals.append((n.key, n.value))
+                    n = n.next
+                print(f"  D0[{idx}] bound={blk.bound}, size={blk.size}, items={vals}")
+                blk = blk.next_block
+                idx += 1
+
+            # --- Dump D1 ---
+            print("D1 blocks:")
+            for bnd, blk in self.D1.items():
+                vals = []
+                n = blk.head
+                while n:
+                    vals.append((n.key, n.value))
+                    n = n.next
+                print(f"  bound={bnd}, size={blk.size}, items={vals}")
+
+            # --- Dump collected blocks ---
+            print("Collected blocks:")
+            for i, blk in enumerate(collected):
+                vals = []
+                n = blk.head
+                while n:
+                    vals.append((n.key, n.value))
+                    n = n.next
+                print(f"  collected[{i}] bound={blk.bound}, size={blk.size}, items={vals}")
+
+                return x_scalar, set()
         return x_scalar, S_keys
     
 

@@ -5,7 +5,7 @@ from D import DataStructureD
 
 INF = math.inf          # ───────────── sentinel 하나만 둡니다
 
-N = 1000
+N = 100000
 M = 0
 k = math.floor(log2(N) ** (1/3))
 t = math.floor(log2(N) ** (2/3))
@@ -115,6 +115,7 @@ def needsUpdate(u, v):
     return dist[u] + adj[u][v] < dist[v]
 
 def update(u, v):
+    global N, M, start, adj, vertices, dist, depth, pred, k, t
     new_d = dist[u] + adj[u][v]
     if new_d < dist[v]:                # 실제로 짧아질 때만
         dist[v]  = new_d
@@ -122,12 +123,14 @@ def update(u, v):
         pred[v]  = u
 
 def cmp(u, v):                          # tie-breaking이 필요하면
+    global N, M, start, adj, vertices, dist, depth, pred, k, t
     if dist[u] is INF or dist[v] is INF:
         return 0                       # 미확정 → 비교 안 함
     return (dist[v], depth[v], v) < (dist[u], depth[u], u)
 
 #Algorithm 1
 def findPivots(B, S):
+    global N, M, start, adj, vertices, dist, depth, pred, k, t
     """
     U': Contains every incomplete vertex with d(v) < B where the shortest path visits some vertex in S
     Finds a set W of size O(k|S|) and a set of pivots P (subset of S) with |P| <= |W|/k
@@ -147,6 +150,10 @@ def findPivots(B, S):
                 update(u, v)                  # ★ 깊이·거리 확정
                 W.add(v)
                 stack.append(v)
+        if len(W) > k * len(S):
+            P = S
+            return P, W 
+
 
     # ---------- 2. out-degree ≤1 포리스트 만들기 -------------------
     tAdj = {u: [] for u in W}                 # 자식 리스트
@@ -183,6 +190,7 @@ def BaseCase(B, S):
     """
     # --- 1) 입력 검증 & 초기화 -----------------------------
     if not isinstance(S, set) or len(S) != 1:
+        print(f"BaseCase called with invalid S={S}")
         raise ValueError("S must be a singleton set {source_vertex}")
     x = next(iter(S))        # 소스 꼭짓점
     U_0 = set(S)             # 현재까지 확정된 정점 집합 (최대 k+1개)
@@ -227,9 +235,11 @@ def BMSSP(l, B, S):
     M = 2**((l-1)*t)
     D = DataStructureD(M, B)
     for x in P:
-        D.insert(x, (dist[x], depth[x], pred[x]))
+        D.insert(x, (dist[x], depth[x], pred[x], x))
 
     #   B′0 ← min_{x∈P} d̂[x]   (P가 비면 B 자체)
+    if not P:
+        print("=====P is empty=====")
     B_last = min((dist[x] for x in P), default=B)
     U      = set()
     i      = 0
@@ -252,7 +262,7 @@ def BMSSP(l, B, S):
                     K.append((v, (dist[u] + adj[u][v], depth[u] + 1, u, v)))
         for x in S_i:
             if dist[x] >= B_last and dist[x] < B_i:
-                K.append((x, (dist[x], depth[x], pred[x])))
+                K.append((x, (dist[x], depth[x], pred[x], x)))
         D.batch_prepend(K)
 
     # ----- 3. 종료 처리 ---------------------------------------

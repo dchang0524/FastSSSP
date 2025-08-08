@@ -1,6 +1,6 @@
 import random
 
-N = 1000
+N = 100000
 
 adj = []
 existing_edges = set() # Use a set for O(1) average time lookups

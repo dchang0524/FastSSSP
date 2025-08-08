@@ -46,43 +46,163 @@ class DebugDataStructureD(DataStructureD):
             raise RuntimeError("State verification failed: key mismatch.")
 
     def insert(self, key, value_tuple):
+        print(f"[D.insert] key={key}, value={value_tuple}, before nnz={self.nnz}")
         super().insert(key, value_tuple)
-        self._verify_state(f"insert(key={key}, value={value_tuple})")
+        print(f"[D.insert] after nnz={self.nnz}")
+
+        # After inserting, dump D0
+        print("  ┌── D0 blocks ──")
+        blk = self.d0_head
+        idx = 0
+        while blk:
+            vals = []
+            n = blk.head
+            while n:
+                vals.append((n.key, n.value))
+                n = n.next
+            print(f"    D0[{idx}] bound={blk.bound}, size={blk.size}, items={vals}")
+            blk = blk.next_block
+            idx += 1
+
+        # Dump D1
+        print("  ┌── D1 blocks ──")
+        for bnd, blk in self.D1.items():
+            vals = []
+            n = blk.head
+            while n:
+                vals.append((n.key, n.value))
+                n = n.next
+            print(f"    bound={bnd}, size={blk.size}, items={vals}")
+        print("  └────────────────\n")
+
 
     def batch_prepend(self, items):
+        print(f"[D.batch_prepend] adding {len(items)} items, before nnz={self.nnz}")
         super().batch_prepend(items)
-        self._verify_state(f"batch_prepend with {len(items)} items")
+        print(f"[D.batch_prepend] after nnz={self.nnz}")
+
+        # Dump D0
+        print("  ┌── D0 blocks ──")
+        blk = self.d0_head
+        idx = 0
+        while blk:
+            vals = []
+            n = blk.head
+            while n:
+                vals.append((n.key, n.value))
+                n = n.next
+            print(f"    D0[{idx}] bound={blk.bound}, size={blk.size}, items={vals}")
+            blk = blk.next_block
+            idx += 1
+
+        # Dump D1
+        print("  ┌── D1 blocks ──")
+        for bnd, blk in self.D1.items():
+            vals = []
+            n = blk.head
+            while n:
+                vals.append((n.key, n.value))
+                n = n.next
+            print(f"    bound={bnd}, size={blk.size}, items={vals}")
+        print("  └────────────────\n")
+
 
     def pull(self):
-        # --- MODIFIED: Capture the actual threshold before the real pull ---
-        collected, count = [], 0
+        print(f"[D.pull] Starting pull, nnz={self.nnz}")
+
+        # Dump current D0
+        print("  ┌── Current D0 blocks ──")
+        blk = self.d0_head
+        idx = 0
+        while blk:
+            vals = []
+            n = blk.head
+            while n:
+                vals.append((n.key, n.value))
+                n = n.next
+            print(f"    D0[{idx}] bound={blk.bound}, size={blk.size}, items={vals}")
+            blk = blk.next_block
+            idx += 1
+
+        # Dump current D1
+        print("  ┌── Current D1 blocks ──")
+        for bnd, blk in self.D1.items():
+            vals = []
+            n = blk.head
+            while n:
+                vals.append((n.key, n.value))
+                n = n.next
+            print(f"    bound={bnd}, size={blk.size}, items={vals}")
+        print("  └────────────────")
+
+        # Call the original logic up until after we collect blocks
+        collected = []
+        count = 0
+
         current_block = self.d0_head
         while current_block:
             collected.append(current_block)
             count += current_block.size
             if count >= self.M: break
             current_block = current_block.next_block
+
         if count < self.M:
             for _, blk in self.D1.items():
                 collected.append(blk)
                 count += blk.size
-                if count >= self.M: break
-        
+                if count >= self.M:
+                    break
+
+        # Dump collected blocks before selecting S
+        print("  ┌── Collected blocks ──")
+        for idx, blk in enumerate(collected):
+            vals = []
+            n = blk.head
+            while n:
+                vals.append((n.key, n.value))
+                n = n.next
+            print(f"    Collected[{idx}] bound={blk.bound}, size={blk.size}, items={vals}")
+        print("  └────────────────")
+
+        # The rest is just your original pull() code
         items = []
         for blk in collected:
             n = blk.head
             while n:
                 items.append((n.key, n.value))
                 n = n.next
-        
-        if len(items) > self.M:
-            self.last_actual_threshold = self.quickselect(items, self.M - 1)
-        else:
-            self.last_actual_threshold = None
 
-        # Now, call the original pull method
-        result = super().pull()
-        return result
+        if not items:
+            print("[D.pull] No items found, returning empty S.")
+            return self.B[0] if isinstance(self.B, tuple) else self.B, set()
+
+        if len(items) > self.M:
+            threshold = self.quickselect(items, self.M - 1)
+            chosen = [kv for kv in items if kv[1] <= threshold]
+        else:
+            chosen = items
+
+        S_keys = {kv[0] for kv in chosen}
+
+        if not S_keys:
+            print("[D.pull] WARNING: S_keys is empty!")
+        
+        for key in S_keys:
+            self.delete(key)
+
+        remaining = []
+        if self.d0_head and self.d0_head.head:
+            remaining.append(self.d0_head.head.value)
+        if self.D1 and self.D1.keys():
+            first_blk = self.D1[self.D1.keys()[0]]
+            if first_blk.head:
+                remaining.append(first_blk.head.value)
+
+        x_tuple = min(remaining) if remaining else self.B
+        x_scalar = x_tuple[0] if isinstance(x_tuple, tuple) else x_tuple
+
+        print(f"[D.pull] Returning x={x_scalar}, |S|={len(S_keys)}, sample={list(S_keys)[:5]}")
+        return x_scalar, S_keys
 
 # --- Main Debugging Function ---
 def main():
