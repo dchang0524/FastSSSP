@@ -245,7 +245,7 @@ def reset_graph(n):
     alg.pred = [-1] * n
     # recompute k,t based on log2(N) per user's code
     from math import log2
-    alg.k = math.floor(log2(n) ** (1/3)) if n > 1 else 1
+    alg.k = max(2, math.floor(log2(n) ** (1/3))) if n > 1 else 1
     alg.t = math.floor(log2(n) ** (2/3)) if n > 1 else 1
     # if alg.k < 2: alg.k = 2
     # if alg.t < 2: alg.t = 2

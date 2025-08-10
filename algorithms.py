@@ -110,17 +110,28 @@ def transformGraph():
           
 
 def needsUpdate(u, v):
-    if dist[u] is INF:                 # 아직 출발 정점이 확정되지 않았으면
+    if dist[u] is INF:
         return False
-    return dist[u] + adj[u][v] < dist[v]
+    nd = dist[u] + adj[u][v]  # 새 후보 거리
+    dv = dist[v]
+
+    if nd < dv:
+        return True
+    if nd == dv:
+        # 논문 Assumption 2.1에 맞춘 tie-breaking:
+        # 1) hop 수(=depth) 더 짧은 경로 우선
+        # 2) 그래도 같으면 endpoint id(여기서는 u)로 정렬
+        # (원 논문은 (길이, α, 끝점, …) 순의 사전식 정렬을 가정)
+        return (depth[u] + 1, u) < (depth[v], pred[v])
+    return False
 
 def update(u, v):
     global N, M, start, adj, vertices, dist, depth, pred, k, t
     new_d = dist[u] + adj[u][v]
-    if new_d < dist[v]:                # 실제로 짧아질 때만
-        dist[v]  = new_d
-        depth[v] = depth[u] + 1
-        pred[v]  = u
+    # needsUpdate가 True일 때만 호출된다고 가정
+    dist[v]  = new_d
+    depth[v] = depth[u] + 1
+    pred[v]  = u
 
 def cmp(u, v):                          # tie-breaking이 필요하면
     global N, M, start, adj, vertices, dist, depth, pred, k, t
@@ -141,42 +152,71 @@ def findPivots(B, S):
     Runs in O(k|W|) = O(min{k^2|S|, k|U'|})
     """
 
-    # ---------- 1. W 집합 구축 (B-bound BFS) ------------------------
-    W, stack = set(S), list(S)
+    # L2, L3
+    W  = set(S)
+    Wm = set(S)                 # W_0
+
+    kS = k * len(S)
+
+    # L4: for i = 1 to k do
+    for _ in range(k):
+        Wi = set()              # L5
+
+        # L6: for all edges (u,v) with u ∈ W_{i-1} do
+        for u in Wm:
+            for v, w in adj[u].items():
+                nd = dist[u] + w
+                # L7: if d̂[u] + w_uv ≤ d̂[v] then
+                if needsUpdate(u, v):               # needsUpdate의 ≤ 규칙
+                    # tie-break은 needsUpdate 안에 두셨다면:
+                    # if needsUpdate(u, v): update(u, v)
+                    # 처럼 바꿔도 됩니다.
+                    update(u, v)            # L8
+
+                # L9: if d[u] + w_uv < B then
+                if nd < B:
+                    # L10: W_i ← W_i ∪ {v}
+                    Wi.add(v)
+
+        # L11: W ← W ∪ W_i
+        W |= Wi
+
+        # L12–L14: if |W| > k|S| then  P ← S ; return P, W
+        if len(W) > kS:
+            return set(S), W
+
+        # 다음 단계로 전파
+        Wm = Wi
+
+    # (여기까지 왔으면 조기 종료 없었음)
+    # L15: F ← {(u,v)∈E : u,v∈W, d̂[v] = d̂[u] + w_uv}
+    tAdj = {u: [] for u in W}
+    for u in W:
+        for v, w in adj[u].items():
+            if v in W and dist[v] == dist[u] + w:   # 정확히 등호
+                tAdj[u].append(v)                   # Assumption 2.1 하에 forest
+
+    # L16: P ← { u ∈ S : u is a root of a tree with ≥ k vertices in F }
+    # (후위 순서로 서브트리 크기 세기)
+    post, stack, seen = [], list(S), set()
     while stack:
         u = stack.pop()
-        for v, w in adj[u].items():           # dict → (v,w)
-            if dist[u] + w < B and v not in W:
-                update(u, v)                  # ★ 깊이·거리 확정
-                W.add(v)
-                stack.append(v)
-        if len(W) > k * len(S):
-            P = S
-            return P, W 
-
-
-    # ---------- 2. out-degree ≤1 포리스트 만들기 -------------------
-    tAdj = {u: [] for u in W}                 # 자식 리스트
-    for u in W:
-        for v in adj[u]:
-            if v in W and depth[v] == depth[u] + 1:
-                tAdj[u].append(v)
-
-    # ---------- 3. 후위 DFS 순서(post-order) ------------------------
-    post, dfs_stack = [], list(S)
-    while dfs_stack:
-        u = dfs_stack.pop()
+        if u in seen: 
+            continue
+        seen.add(u)
         post.append(u)
         for v in tAdj[u]:
-            dfs_stack.append(v)
+            if v not in seen:
+                stack.append(v)
 
-    # ---------- 4. 서브트리 크기 & pivot 집합 -----------------------
     size = {u: 1 for u in W}
-    for u in reversed(post):                  # 자식 → 부모
+    for u in reversed(post):
         for v in tAdj[u]:
             size[u] += size[v]
 
-    P = {u for u in W if size[u] >= k}        # sz ≥ k ⇒ pivot
+    P = {u for u in S if u in W and size.get(u, 0) >= k}
+
+    # L17
     return P, W
 
 
@@ -208,7 +248,7 @@ def BaseCase(B, S):
         for v in adj[u]:
             if needsUpdate(u, v) and dist[u] + adj[u][v] < B:
                 update(u, v)
-                heapq.heappush(heap, (dist[v], v))
+            heapq.heappush(heap, (dist[v], v))
 
     # --- 3) 정점 수(k+1) 에 따라 반환 ----------------------
     if len(U_0) <= k:                 # 아직 k개 이하라면
@@ -221,7 +261,7 @@ def BaseCase(B, S):
 
 # Algorithm 3
 def BMSSP(l, B, S):
-    global adj, vertices, dist, depth, pred
+    global adj, vertices, dist, depth, pred, k, t
     """
     Given an integer level 0 =< l =< ceiling(logn/t)), source set S of size =< 2^(lt),
     and an upper bound B > max {dist(x) | x in S},
@@ -230,9 +270,11 @@ def BMSSP(l, B, S):
     the shortest path to x visits some complete vertex y in S
     """
     if l == 0:
+        print(BaseCase(B, S))  # Base case: l = 0
         return BaseCase(B, S)  # B', U
     (P, W) = findPivots(B, S)
     M = 2**((l-1)*t)
+    print(f"BMSSP: l={l}, B={B}, |S|={len(S)}, |P|={len(P)}, |W|={len(W)}, M={M}")
     D = DataStructureD(M, B)
     for x in P:
         D.insert(x, (dist[x], depth[x], pred[x], x))
@@ -240,6 +282,8 @@ def BMSSP(l, B, S):
     #   B′0 ← min_{x∈P} d̂[x]   (P가 비면 B 자체)
     if not P:
         print("=====P is empty=====")
+    if P:
+        print(f"=====P is not empty: of size {len(P)}=====")
     B_last = min((dist[x] for x in P), default=B)
     U      = set()
     i      = 0
@@ -248,7 +292,9 @@ def BMSSP(l, B, S):
     # Partial execution if len(U) > k*2**(l*t) (due to large workload, B' < B)
     while len(U) < k*2**(l*t) and D:
         i = i+1
+        print(f"D count: {D.nnz}")
         B_i, S_i = D.pull()
+        print(f"BMSSP: i={i}, B_i={B_i}, |S_i|={len(S_i)}")
         B_last, U_i    = BMSSP(l - 1, B_i, S_i)  # 재귀 호출
         U = U.union(U_i)
         K = []

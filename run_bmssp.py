@@ -24,16 +24,24 @@ def main():
     N     = max(max(u, v) for u, v, _ in edges) + 1
     build_graph_from_edges(edges, N)
 
-    # --- 필수: 그래프 변형 -------------------------------------
-    alg.transformGraph()
+    # --- 변형 여부 스위치 ---------------------------------------
+    USE_TRANSFORM = False   # ← transformGraph() 잠깐 끄고 테스트할 때 False
 
-    # --- 변형 후 배열 재초기화 ---------------------------------
-    INF = math.inf
-    alg.dist   = [INF] * alg.N
-    alg.depth  = [INF] * alg.N
-    alg.pred   = [-1]  * alg.N
-    alg.dist[alg.start]  = 0
-    alg.depth[alg.start] = 0
+    if USE_TRANSFORM:
+        alg.transformGraph()
+        # 변형 후 배열 재초기화
+        INF = math.inf
+        alg.dist   = [INF] * alg.N
+        alg.depth  = [INF] * alg.N
+        alg.pred   = [-1]  * alg.N
+        alg.dist[alg.start]  = 0
+        alg.depth[alg.start] = 0
+    else:
+        # ★ 변형을 생략하면 adj 형식을 dict로 강제 변환
+        #    list[set((v,w))]  ->  list[dict{v:w}]
+        if alg.adj and isinstance(alg.adj[0], set):
+            alg.adj = [{v: w for (v, w) in nbrs} for nbrs in alg.adj]
+        # N, start, dist/depth/pred 는 build_graph_from_edges()에서 이미 초기화됨
 
     # 테스트용: 한 번에 모두 확정하도록 k = N'
     alg.k = math.floor(math.log2(alg.N) ** (1/3))
@@ -43,8 +51,9 @@ def main():
     B_prime, U = alg.BMSSP(l, math.inf, {alg.start})
     print(f"B'={B_prime}, |U|={len(U)}")
     for v in list(U)[:10]:
-        print(v, alg.dist[v])
+        print(v, alg.dist[v], alg.depth[v], alg.pred[v])
+    print(alg.dist[:100])
+    print(alg.k, alg.t, l)    
 
 if __name__ == "__main__":
     main()
-
