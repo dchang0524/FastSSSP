@@ -1,7 +1,8 @@
 import math
 from math import log2
 import heapq
-from D import DataStructureD
+# from D import DataStructureD
+from lemma33_data_structure import Lemma33DataStructure as DataStructureD
 
 INF = math.inf          # ───────────── sentinel 하나만 둡니다
 
@@ -110,7 +111,7 @@ def transformGraph():
           
 
 def needsUpdate(u, v):
-    if dist[u] is INF:
+    if math.isinf(dist[u]):         # ★ 'is' 대신 isinf
         return False
     nd = dist[u] + adj[u][v]  # 새 후보 거리
     dv = dist[v]
@@ -242,13 +243,28 @@ def BaseCase(B, S):
     while heap and len(U_0) < k + 1:
         d_u, u = heapq.heappop(heap)
 
+        # 낡은 키/Bound 체크
+        if d_u != dist[u] or d_u >= B:
+            continue
+
         if u not in U_0:
             U_0.add(u)
 
-        for v in adj[u]:
-            if needsUpdate(u, v) and dist[u] + adj[u][v] < B:
-                update(u, v)
-            heapq.heappush(heap, (dist[v], v))
+        # dict → (v,w)로 명시적으로 순회 (형식 혼동 방지)
+        for v, w in adj[u].items():
+            nd = d_u + w
+
+            # 완화가 실제로 일어나면 즉시 갱신 + push
+            if nd < dist[v] or (nd == dist[v] and (depth[u] + 1, u) < (depth[v], pred[v])):
+                if nd < B:                           # ★ Bound 안에서만
+                    dist[v]  = nd
+                    depth[v] = depth[u] + 1
+                    pred[v]  = u
+                    heapq.heappush(heap, (nd, v))
+            else:
+                # ★ equality-edge를 따라 탐색 전개 (이미 최단거리여도)
+                if nd == dist[v] and nd < B:
+                    heapq.heappush(heap, (dist[v], v))
 
     # --- 3) 정점 수(k+1) 에 따라 반환 ----------------------
     if len(U_0) <= k:                 # 아직 k개 이하라면
@@ -270,8 +286,9 @@ def BMSSP(l, B, S):
     the shortest path to x visits some complete vertex y in S
     """
     if l == 0:
-        print(BaseCase(B, S))  # Base case: l = 0
-        return BaseCase(B, S)  # B', U
+        res = BaseCase(B, S)   # ★ 한 번만!
+        print(res)
+        return res
     (P, W) = findPivots(B, S)
     M = 2**((l-1)*t)
     print(f"BMSSP: l={l}, B={B}, |S|={len(S)}, |P|={len(P)}, |W|={len(W)}, M={M}")
@@ -284,18 +301,23 @@ def BMSSP(l, B, S):
         print("=====P is empty=====")
     if P:
         print(f"=====P is not empty: of size {len(P)}=====")
-    B_last = min((dist[x] for x in P), default=B)
+    B0 = min((dist[x] for x in P), default=B)
+    B_last = B0
     U      = set()
     i      = 0
 
     # Successful execution if D is empty (B' = B)
     # Partial execution if len(U) > k*2**(l*t) (due to large workload, B' < B)
     while len(U) < k*2**(l*t) and D:
+        #U_cap = k * 2**(l*t)
+        #print(f"[l={l}] guard: |U|={len(U)} < cap={U_cap} and D={bool(D)}")
         i = i+1
-        print(f"D count: {D.nnz}")
+        # print(f"D count: {D.nnz}")
         B_i, S_i = D.pull()
         print(f"BMSSP: i={i}, B_i={B_i}, |S_i|={len(S_i)}")
-        B_last, U_i    = BMSSP(l - 1, B_i, S_i)  # 재귀 호출
+        # 이번 회차 재귀 호출
+        B_prime_i, U_i = BMSSP(l - 1, B_i, S_i)
+        B_last = B_prime_i        # ★ 마지막 B′ 갱신
         U = U.union(U_i)
         K = []
         for u in U_i:
@@ -304,12 +326,14 @@ def BMSSP(l, B, S):
                     update(u, v)
                 if dist[u] + adj[u][v] >= B_i and dist[u] + adj[u][v] < B:
                     D.insert(v, (dist[u] + adj[u][v], depth[u] + 1, u, v))
-                elif dist[u] + adj[u][v] >= B_last and dist[u] + adj[u][v] < B_i:
+                elif dist[u] + adj[u][v] >= B_prime_i and dist[u] + adj[u][v] < B_i:
                     K.append((v, (dist[u] + adj[u][v], depth[u] + 1, u, v)))
         for x in S_i:
-            if dist[x] >= B_last and dist[x] < B_i:
+            if dist[x] >= B_prime_i and dist[x] < B_i:
                 K.append((x, (dist[x], depth[x], pred[x], x)))
         D.batch_prepend(K)
+        # BMSSP while 바디 끝부분, D.batch_prepend(K) 바로 다음
+        #print(f"[l={l}] after prepend: |K|={len(K)}, D_empty={not D}")
 
     # ----- 3. 종료 처리 ---------------------------------------
     B_final = min(B_last, B)                     # 22 행과 동일
