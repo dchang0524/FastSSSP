@@ -205,13 +205,12 @@ class Lemma33DataStructure:
                 self.key_map[k] = (vt, blk)
                 self.nnz += 1
 
+    # In lemma33_data_structure.py
     def pull(self):
         """
-        Return (Bi_scalar, Si_set).
-        Naive: gather all items, sort globally by value tuple, take top M,
-               remove them, and set Bi as min remaining value's first component.
+        Pulls up to M items and returns a bound B_i that is strictly greater
+        than the distance of any pulled item.
         """
-        # gather all
         all_items = []
         for blk in self.D0:
             all_items.extend(blk.elements)
@@ -221,26 +220,37 @@ class Lemma33DataStructure:
         if not all_items:
             return self.B, set()
 
-        # pick global min M
         all_items.sort(key=lambda kv: kv[1])
-        chosen = all_items[:self.M]
-        S_keys = {k for (k, _) in chosen}
 
-        # remove chosen keys from DS
+        # If we can pull everything, do so and return the global bound.
+        if len(all_items) <= self.M:
+            chosen_keys = {k for k, v in all_items}
+            for k in chosen_keys:
+                self._delete_entry(k)
+            return self.B, chosen_keys
+
+        # Pull exactly M items, breaking ties arbitrarily.
+        chosen_items = all_items[:self.M]
+        S_keys = {k for k, v in chosen_items}
+
+        # The max value in our pulled set is the value of the last item.
+        max_val_in_chosen = chosen_items[-1][1]
+
+        # --- CORRECTED BOUND LOGIC ---
+        # Find the new bound B_i. It MUST be strictly greater.
+        # Search for the first item in the remainder of the list
+        # with a value tuple greater than the max we just pulled.
+        B_i = self.B # Default to the global bound
+        for k, v_tuple in all_items[self.M:]:
+            if v_tuple > max_val_in_chosen:
+                B_i = v_tuple[0]  # Get the scalar distance component
+                break             # We found our bound, so stop.
+                
+        # Remove the chosen keys from the data structure
         for k in S_keys:
             self._delete_entry(k)
-
-        # compute Bi as min remaining (first component)
-        rem_min_tuple = None
-        for blk in self.D0:
-            for _, vt in blk.elements:
-                rem_min_tuple = vt if rem_min_tuple is None else min(rem_min_tuple, vt)
-        for blk in self.D1:
-            for _, vt in blk.elements:
-                rem_min_tuple = vt if rem_min_tuple is None else min(rem_min_tuple, vt)
-
-        Bi = rem_min_tuple[0] if rem_min_tuple is not None else self.B
-        return Bi, S_keys
+            
+        return B_i, S_keys
 
     def __bool__(self):
         return self.nnz > 0

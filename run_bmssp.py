@@ -25,7 +25,7 @@ def main():
     build_graph_from_edges(edges, N)
 
     # --- 변형 여부 스위치 ---------------------------------------
-    USE_TRANSFORM = False   # ← transformGraph() 잠깐 끄고 테스트할 때 False
+    USE_TRANSFORM = True   # ← transformGraph() 잠깐 끄고 테스트할 때 False
 
     if USE_TRANSFORM:
         alg.transformGraph()
@@ -49,7 +49,7 @@ def main():
     l     = math.ceil(math.log2(alg.N) / alg.t)
 
     B_prime, U = alg.BMSSP(l, math.inf, {alg.start})
-    print(f"B'={B_prime}, |U|={len(U)}")
+    print(f"B'={B_prime}, |U|={len(U)}, N={alg.N}")
     for v in list(U)[:10]:
         print(v, alg.dist[v], alg.depth[v], alg.pred[v])
     print(alg.dist[:100])

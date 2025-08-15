@@ -1,8 +1,8 @@
 import math
 from math import log2
 import heapq
-# from D import DataStructureD
-from lemma33_data_structure import Lemma33DataStructure as DataStructureD
+from D import DataStructureD
+# from lemma33_data_structure import Lemma33DataStructure as DataStructureD
 
 INF = math.inf          # ───────────── sentinel 하나만 둡니다
 
@@ -17,29 +17,30 @@ dist = [INF] * N  # sum of path weights
 depth = [INF] * N   # number of vertices traversed
 pred = [-1] * N  #last previous vertex visited in path
 
-#Graph Transformation
+# Graph Transformation
 def transformGraph():
     global N, M, start, adj, vertices, dist, depth, pred, k, t
+
+    import math
+    from math import log2
+
+    eps = 1e-10
 
     # Keep a reference to the original graph structure to read from
     old_adj = adj
     old_start = start
     old_n = N
 
-    # 1. Find all neighbors (incoming and outgoing) for each vertex.
+    # 1) 모든 정점의 (무향) 이웃 수집
     all_neighbors = [[] for _ in range(old_n)]
     for u in range(old_n):
-        # old_adj is a list of sets of (neighbor, weight) tuples
         for v, _ in old_adj[u]:
             all_neighbors[u].append(v)
             all_neighbors[v].append(u)
-    
-    # Handle duplicates
     for i in range(old_n):
         all_neighbors[i] = sorted(list(set(all_neighbors[i])))
 
-    # 2. --- Vertex Renumbering Step ---
-    # Create new vertices x_uv and map them to new integer IDs.
+    # 2) (u,v) -> 새 정점 id 매핑
     node_map = {}
     new_node_counter = 0
     for u in range(old_n):
@@ -47,67 +48,101 @@ def transformGraph():
             if (u, v) not in node_map:
                 node_map[(u, v)] = new_node_counter
                 new_node_counter += 1
-    
+
     new_n = new_node_counter
-    # The new adjacency list will be a list of dictionaries.
     new_adj_list = [{} for _ in range(new_n)]
     new_m = 0
 
-    # 3. --- Cycle Creation Step ---
-    # Create cycles with zero-weight edges.
+    # 3) 각 u에 대해, 이웃들로 0-가중치 순환(방향) 만들기
     for u in range(old_n):
         cycle_nodes = all_neighbors[u]
         if len(cycle_nodes) > 1:
             for i in range(len(cycle_nodes)):
                 v1 = cycle_nodes[i]
                 v2 = cycle_nodes[(i + 1) % len(cycle_nodes)]
-                
                 node1_id = node_map.get((u, v1))
                 node2_id = node_map.get((u, v2))
-
                 if node1_id is not None and node2_id is not None:
-                    # Use dictionary assignment for direct access
-                    new_adj_list[node1_id][node2_id] = 0
-                    new_m += 1
+                    if node2_id not in new_adj_list[node1_id]:
+                        new_adj_list[node1_id][node2_id] = eps
+                        new_m += 1
 
-    # 4. --- Original Edge Weight Step ---
-    # Add edges corresponding to the original graph's edges.
+    # 4) 원래 방향 간선에 해당하는 (u,v)->(v,u) 간선 추가(가중치 = 원래 가중치)
     for u in range(old_n):
-        # old_adj is a list of sets of (neighbor, weight) tuples
         for v, w in old_adj[u]:
             node_uv_id = node_map.get((u, v))
             node_vu_id = node_map.get((v, u))
-
             if node_uv_id is not None and node_vu_id is not None:
-                # Use dictionary assignment for direct access
-                new_adj_list[node_uv_id][node_vu_id] = w
-                new_m += 1
+                if node_vu_id not in new_adj_list[node_uv_id]:
+                    new_adj_list[node_uv_id][node_vu_id] = w
+                    new_m += 1
 
-    # 5. --- Determine New Start Node ---
+    # 5) 새로운 시작 정점
     new_start = -1
     if old_adj[old_start]:
         try:
             first_neighbor_v, _ = next(iter(old_adj[old_start]))
             new_start = node_map.get((old_start, first_neighbor_v), -1)
         except StopIteration:
-            # old_start has no outgoing edges
             pass
 
-    # --- Update Global Variables ---
+    # 6) 0-가중치 2-사이클 깨기
+    #    (a->b == 0, b->a == 0 인 경우, out-degree가 2인 쪽(또는 더 큰 쪽)에서 0엣지 제거)
+    pairs = set()
+    for a in range(new_n):
+        for b, w in new_adj_list[a].items():
+            if w == eps and a != b and new_adj_list[b].get(a) == eps:
+                pairs.add((min(a, b), max(a, b)))  # 중복 방지
+
+    to_remove = []
+    for a, b in pairs:
+        deg_a = len(new_adj_list[a])
+        deg_b = len(new_adj_list[b])
+
+        # 우선 규칙: 2 대 1이면, 2인 쪽에서 제거
+        if deg_a == 2 and deg_b == 1:
+            remove_from, other = a, b
+        elif deg_b == 2 and deg_a == 1:
+            remove_from, other = b, a
+        else:
+            # 일반화: out-degree가 더 큰 쪽에서 제거 (같으면 id 큰 쪽)
+            if deg_a > deg_b:
+                remove_from, other = a, b
+            elif deg_b > deg_a:
+                remove_from, other = b, a
+            else:
+                remove_from, other = (b, a) if b > a else (a, b)
+
+        if new_adj_list[remove_from].get(other) == eps:
+            to_remove.append((remove_from, other))
+
+    for u, v in to_remove:
+        # 실제로 제거
+        if v in new_adj_list[u] and new_adj_list[u][v] == eps:
+            del new_adj_list[u][v]
+
+    # 간선 수는 실제 dict 길이 합으로 재계산 (중복/덮어쓰기 보정)
+    new_m = sum(len(d) for d in new_adj_list)
+
+    # --- 전역 갱신 ---
     N = new_n
     M = new_m
-    adj = new_adj_list # adj is now a list of dictionaries
+    adj = new_adj_list  # dict 기반 인접리스트
     start = new_start
     vertices = list(range(N))
-    k = math.floor(log2(N) ** (1/3))
-    t = math.floor(log2(N) ** (2/3))
-    # ★ sentinel = ∞ 로 초기화 ★
+
+    # 파라미터/배열 초기화
+    k = math.floor(log2(N) ** (1/3)) if N > 1 else 0
+    t = math.floor(log2(N) ** (2/3)) if N > 1 else 0
+
     INF = math.inf
     dist  = [INF] * N
     depth = [INF] * N
     pred  = [-1]  * N
-    dist[start]  = 0
-    depth[start] = 0
+    if 0 <= start < N:
+        dist[start]  = 0
+        depth[start] = 0
+
           
 
 def needsUpdate(u, v):
@@ -123,11 +158,12 @@ def needsUpdate(u, v):
         # 1) hop 수(=depth) 더 짧은 경로 우선
         # 2) 그래도 같으면 endpoint id(여기서는 u)로 정렬
         # (원 논문은 (길이, α, 끝점, …) 순의 사전식 정렬을 가정)
-        return (depth[u] + 1, u) < (depth[v], pred[v])
+        return u < pred[v]
     return False
 
 def update(u, v):
     global N, M, start, adj, vertices, dist, depth, pred, k, t
+    
     new_d = dist[u] + adj[u][v]
     # needsUpdate가 True일 때만 호출된다고 가정
     dist[v]  = new_d
@@ -168,16 +204,16 @@ def findPivots(B, S):
             for v, w in adj[u].items():
                 nd = dist[u] + w
                 # L7: if d̂[u] + w_uv ≤ d̂[v] then
-                if needsUpdate(u, v):               # needsUpdate의 ≤ 규칙
+                if nd <= dist[v]:               # needsUpdate의 ≤ 규칙
                     # tie-break은 needsUpdate 안에 두셨다면:
                     # if needsUpdate(u, v): update(u, v)
                     # 처럼 바꿔도 됩니다.
                     update(u, v)            # L8
 
-                # L9: if d[u] + w_uv < B then
-                if nd < B:
-                    # L10: W_i ← W_i ∪ {v}
-                    Wi.add(v)
+                    # L9: if d[u] + w_uv < B then
+                    if nd < B:
+                        # L10: W_i ← W_i ∪ {v}
+                        Wi.add(v)
 
         # L11: W ← W ∪ W_i
         W |= Wi
@@ -244,27 +280,24 @@ def BaseCase(B, S):
         d_u, u = heapq.heappop(heap)
 
         # 낡은 키/Bound 체크
-        if d_u != dist[u] or d_u >= B:
+        if d_u > dist[u] or d_u >= B:
             continue
 
         if u not in U_0:
             U_0.add(u)
 
-        # dict → (v,w)로 명시적으로 순회 (형식 혼동 방지)
+        # In algorithms.py -> BaseCase
+        # Replace the current relaxation if/else block with this:
         for v, w in adj[u].items():
             nd = d_u + w
 
-            # 완화가 실제로 일어나면 즉시 갱신 + push
-            if nd < dist[v] or (nd == dist[v] and (depth[u] + 1, u) < (depth[v], pred[v])):
-                if nd < B:                           # ★ Bound 안에서만
-                    dist[v]  = nd
-                    depth[v] = depth[u] + 1
-                    pred[v]  = u
+            # Proceed only if the new path is within the overall bound B
+            if nd < B:
+                # Check if the new path is better than the existing one (or equal with a tie-break win)
+                if nd <= dist[v]:
+                    # If so, perform the update and push to the heap
+                    update(u, v)
                     heapq.heappush(heap, (nd, v))
-            else:
-                # ★ equality-edge를 따라 탐색 전개 (이미 최단거리여도)
-                if nd == dist[v] and nd < B:
-                    heapq.heappush(heap, (dist[v], v))
 
     # --- 3) 정점 수(k+1) 에 따라 반환 ----------------------
     if len(U_0) <= k:                 # 아직 k개 이하라면
@@ -322,12 +355,12 @@ def BMSSP(l, B, S):
         K = []
         for u in U_i:
             for v in adj[u]:
-                if needsUpdate(u, v):
+                if dist[u] + adj[u][v] <= dist[v]:
                     update(u, v)
-                if dist[u] + adj[u][v] >= B_i and dist[u] + adj[u][v] < B:
-                    D.insert(v, (dist[u] + adj[u][v], depth[u] + 1, u, v))
-                elif dist[u] + adj[u][v] >= B_prime_i and dist[u] + adj[u][v] < B_i:
-                    K.append((v, (dist[u] + adj[u][v], depth[u] + 1, u, v)))
+                    if dist[u] + adj[u][v] >= B_i and dist[u] + adj[u][v] < B:
+                        D.insert(v, (dist[u] + adj[u][v], depth[u] + 1, u, v))
+                    elif dist[u] + adj[u][v] >= B_prime_i and dist[u] + adj[u][v] < B_i:
+                        K.append((v, (dist[u] + adj[u][v], depth[u] + 1, u, v)))
         for x in S_i:
             if dist[x] >= B_prime_i and dist[x] < B_i:
                 K.append((x, (dist[x], depth[x], pred[x], x)))
