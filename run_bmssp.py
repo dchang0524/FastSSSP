@@ -53,6 +53,7 @@ def main():
     for v in list(U)[:10]:
         print(v, alg.dist[v], alg.depth[v], alg.pred[v])
     print(alg.dist[:100])
+    # print(alg.adj[:100])
     print(alg.k, alg.t, l)    
 
 if __name__ == "__main__":

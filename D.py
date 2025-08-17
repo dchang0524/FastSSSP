@@ -45,7 +45,7 @@ class DataStructureD:
             self.B_tuple = B
             self.B_scalar = B[0]
         else:
-            self.B_tuple = (B, float('inf'), float('inf'), float('inf'))
+            self.B_tuple = (B, float('inf'), float('inf'))
             self.B_scalar = B
 
         # B is now an tuple, e.g., (B, float('inf'), float('inf'))
@@ -94,7 +94,7 @@ class DataStructureD:
     def insert(self, key, value_tuple):
         old_node = self.node_map.get(key)
         # Python's tuple comparison works lexicographically out of the box
-        if old_node and value_tuple >= old_node.value:
+        if old_node and value_tuple[0] >= old_node.value[0]:
             return
         if old_node:
             self.delete(key)
@@ -304,6 +304,7 @@ class DataStructureD:
                 remaining.append(first_blk.head.value)
 
         x_tuple  = min(remaining) if remaining else self.B
+        # x_scalar = x_tuple
         x_scalar = x_tuple[0] if isinstance(x_tuple, tuple) else x_tuple
 
         # 6)  ── Return (bound, keys) in the order expected by BMSSP ───────────────

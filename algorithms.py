@@ -24,7 +24,7 @@ def transformGraph():
     import math
     from math import log2
 
-    eps = 1e-10
+    eps = 0
 
     # Keep a reference to the original graph structure to read from
     old_adj = adj
@@ -146,8 +146,7 @@ def transformGraph():
           
 
 def needsUpdate(u, v):
-    if math.isinf(dist[u]):         # ★ 'is' 대신 isinf
-        return False
+    
     nd = dist[u] + adj[u][v]  # 새 후보 거리
     dv = dist[v]
 
@@ -158,7 +157,12 @@ def needsUpdate(u, v):
         # 1) hop 수(=depth) 더 짧은 경로 우선
         # 2) 그래도 같으면 endpoint id(여기서는 u)로 정렬
         # (원 논문은 (길이, α, 끝점, …) 순의 사전식 정렬을 가정)
-        return u < pred[v]
+        if depth[u] + 1 < depth[v]:
+            return True
+        elif depth[u] + 1 > depth[v]:
+            return False
+        elif depth[u] + 1 == depth[v]:
+            return u <= pred[v]
     return False
 
 def update(u, v):
@@ -166,9 +170,10 @@ def update(u, v):
     
     new_d = dist[u] + adj[u][v]
     # needsUpdate가 True일 때만 호출된다고 가정
-    dist[v]  = new_d
-    depth[v] = depth[u] + 1
-    pred[v]  = u
+    if needsUpdate(u, v):        
+        dist[v]  = new_d
+        depth[v] = depth[u] + 1
+        pred[v]  = u
 
 def cmp(u, v):                          # tie-breaking이 필요하면
     global N, M, start, adj, vertices, dist, depth, pred, k, t
@@ -204,7 +209,7 @@ def findPivots(B, S):
             for v, w in adj[u].items():
                 nd = dist[u] + w
                 # L7: if d̂[u] + w_uv ≤ d̂[v] then
-                if nd <= dist[v]:               # needsUpdate의 ≤ 규칙
+                if needsUpdate(u, v):               # needsUpdate의 ≤ 규칙
                     # tie-break은 needsUpdate 안에 두셨다면:
                     # if needsUpdate(u, v): update(u, v)
                     # 처럼 바꿔도 됩니다.
@@ -294,7 +299,7 @@ def BaseCase(B, S):
             # Proceed only if the new path is within the overall bound B
             if nd < B:
                 # Check if the new path is better than the existing one (or equal with a tie-break win)
-                if nd <= dist[v]:
+                if needsUpdate(u, v):
                     # If so, perform the update and push to the heap
                     update(u, v)
                     heapq.heappush(heap, (nd, v))
@@ -327,7 +332,7 @@ def BMSSP(l, B, S):
     print(f"BMSSP: l={l}, B={B}, |S|={len(S)}, |P|={len(P)}, |W|={len(W)}, M={M}")
     D = DataStructureD(M, B)
     for x in P:
-        D.insert(x, (dist[x], depth[x], pred[x], x))
+        D.insert(x, (dist[x], depth[x], x))
 
     #   B′0 ← min_{x∈P} d̂[x]   (P가 비면 B 자체)
     if not P:
@@ -355,15 +360,15 @@ def BMSSP(l, B, S):
         K = []
         for u in U_i:
             for v in adj[u]:
-                if dist[u] + adj[u][v] <= dist[v]:
+                if needsUpdate(u, v):
                     update(u, v)
                     if dist[u] + adj[u][v] >= B_i and dist[u] + adj[u][v] < B:
-                        D.insert(v, (dist[u] + adj[u][v], depth[u] + 1, u, v))
+                        D.insert(v, (dist[u] + adj[u][v], depth[u] + 1, v))
                     elif dist[u] + adj[u][v] >= B_prime_i and dist[u] + adj[u][v] < B_i:
-                        K.append((v, (dist[u] + adj[u][v], depth[u] + 1, u, v)))
+                        K.append((v, (dist[u] + adj[u][v], depth[u] + 1, v)))
         for x in S_i:
             if dist[x] >= B_prime_i and dist[x] < B_i:
-                K.append((x, (dist[x], depth[x], pred[x], x)))
+                K.append((x, (dist[x], depth[x], x)))
         D.batch_prepend(K)
         # BMSSP while 바디 끝부분, D.batch_prepend(K) 바로 다음
         #print(f"[l={l}] after prepend: |K|={len(K)}, D_empty={not D}")
