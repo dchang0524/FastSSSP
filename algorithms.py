@@ -216,7 +216,7 @@ def findPivots(B, S):
                     update(u, v)            # L8
 
                     # L9: if d[u] + w_uv < B then
-                    if nd < B:
+                    if (nd, depth[u] + 1, v) < B:
                         # L10: W_i ← W_i ∪ {v}
                         Wi.add(v)
 
@@ -235,7 +235,7 @@ def findPivots(B, S):
     tAdj = {u: [] for u in W}
     for u in W:
         for v, w in adj[u].items():
-            if v in W and dist[v] == dist[u] + w:   # 정확히 등호
+            if v in W and dist[v] == dist[u] + w and depth[v] == depth[u] + 1:   # 정확히 등호
                 tAdj[u].append(v)                   # Assumption 2.1 하에 forest
 
     # L16: P ← { u ∈ S : u is a root of a tree with ≥ k vertices in F }
@@ -278,15 +278,15 @@ def BaseCase(B, S):
     U_0 = set(S)             # 현재까지 확정된 정점 집합 (최대 k+1개)
 
     # --- 2) 미니 다이크스트라 -----------------------------
-    heap = [(dist[x], x)]    # (거리, 정점)
+    heap = [((dist[x], pred[x], x), x)]    # (거리, 정점)
     heapq.heapify(heap)
 
     while heap and len(U_0) < k + 1:
         d_u, u = heapq.heappop(heap)
 
         # 낡은 키/Bound 체크
-        if d_u > dist[u] or d_u >= B:
-            continue
+        # if d_u > dist[u] or d_u >= B:
+        #    continue
 
         if u not in U_0:
             U_0.add(u)
@@ -294,22 +294,22 @@ def BaseCase(B, S):
         # In algorithms.py -> BaseCase
         # Replace the current relaxation if/else block with this:
         for v, w in adj[u].items():
-            nd = d_u + w
+            nd = d_u[0] + w  # new distance
 
             # Proceed only if the new path is within the overall bound B
-            if nd < B:
+            if (nd, depth[u] + 1, v) < B:
                 # Check if the new path is better than the existing one (or equal with a tie-break win)
                 if needsUpdate(u, v):
                     # If so, perform the update and push to the heap
                     update(u, v)
-                    heapq.heappush(heap, (nd, v))
+                    heapq.heappush(heap, ((nd, depth[u] + 1, v), v))
 
     # --- 3) 정점 수(k+1) 에 따라 반환 ----------------------
     if len(U_0) <= k:                 # 아직 k개 이하라면
         return B, U_0                 #  → B는 그대로
     else:                             # k+1개가 모이면
-        farthest = max(U_0, key=lambda v: dist[v])   # 가장 먼 정점
-        B_p = dist[farthest]          # 더 타이트한 B'
+        farthest = max(U_0, key=lambda v: (dist[v], depth[v], v))   # 가장 먼 정점
+        B_p = (dist[farthest], depth[farthest], farthest)          # 더 타이트한 B'
         U_0.remove(farthest)          # U는 k개로 줄여서 반환
         return B_p, U_0
 
@@ -339,7 +339,7 @@ def BMSSP(l, B, S):
         print("=====P is empty=====")
     if P:
         print(f"=====P is not empty: of size {len(P)}=====")
-    B0 = min((dist[x] for x in P), default=B)
+    B0 = min(((dist[x], depth[x], x) for x in P), default=B)
     B_last = B0
     U      = set()
     i      = 0
@@ -362,12 +362,12 @@ def BMSSP(l, B, S):
             for v in adj[u]:
                 if needsUpdate(u, v):
                     update(u, v)
-                    if dist[u] + adj[u][v] >= B_i and dist[u] + adj[u][v] < B:
+                    if (dist[u] + adj[u][v], depth[u] + 1, v) >= B_i and (dist[u] + adj[u][v], depth[u] + 1, v) < B:
                         D.insert(v, (dist[u] + adj[u][v], depth[u] + 1, v))
-                    elif dist[u] + adj[u][v] >= B_prime_i and dist[u] + adj[u][v] < B_i:
+                    elif (dist[u] + adj[u][v], depth[u] + 1, v) >= B_prime_i and (dist[u] + adj[u][v], depth[u] + 1, v) < B_i:
                         K.append((v, (dist[u] + adj[u][v], depth[u] + 1, v)))
         for x in S_i:
-            if dist[x] >= B_prime_i and dist[x] < B_i:
+            if (dist[x], depth[x], x) >= B_prime_i and (dist[x], depth[x], x) < B_i:
                 K.append((x, (dist[x], depth[x], x)))
         D.batch_prepend(K)
         # BMSSP while 바디 끝부분, D.batch_prepend(K) 바로 다음
@@ -375,6 +375,6 @@ def BMSSP(l, B, S):
 
     # ----- 3. 종료 처리 ---------------------------------------
     B_final = min(B_last, B)                     # 22 행과 동일
-    U.update(x for x in W if dist[x] < B_final)  # U ← U ∪ { … }
+    U.update(x for x in W if (dist[x], depth[x], x) < B_final)  # U ← U ∪ { … }
 
     return B_final, U  # B', U 

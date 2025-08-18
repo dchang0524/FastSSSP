@@ -94,7 +94,7 @@ class DataStructureD:
     def insert(self, key, value_tuple):
         old_node = self.node_map.get(key)
         # Python's tuple comparison works lexicographically out of the box
-        if old_node and value_tuple[0] >= old_node.value[0]:
+        if old_node and value_tuple >= old_node.value:
             return
         if old_node:
             self.delete(key)
@@ -297,15 +297,25 @@ class DataStructureD:
         # 5)  ── Compute new separator x  (= smallest remaining value) ─────────────
         remaining = []
         if self.d0_head and self.d0_head.head:
-            remaining.append(self.d0_head.head.value)
+            # remaining.append(self.d0_head.head.value)
+            n = self.d0_head.head
+            while n:
+                remaining.append(n.value)   # value는 (dist, pred, v) 튜플 가능
+                n = n.next
         if self.D1 and self.D1.keys():
-            first_blk = self.D1[self.D1.keys()[0]]
-            if first_blk.head:
-                remaining.append(first_blk.head.value)
+            #first_blk = self.D1[self.D1.keys()[0]]
+            #if first_blk.head:
+            #    remaining.append(first_blk.head.value)
+            first_key = self.D1.keys()[0]
+            first_blk = self.D1[first_key]
+            n = first_blk.head
+            while n:
+                remaining.append(n.value)
+                n = n.next
 
         x_tuple  = min(remaining) if remaining else self.B
-        # x_scalar = x_tuple
-        x_scalar = x_tuple[0] if isinstance(x_tuple, tuple) else x_tuple
+        x_scalar = x_tuple
+        # x_scalar = x_tuple[0] if isinstance(x_tuple, tuple) else x_tuple
 
         # 6)  ── Return (bound, keys) in the order expected by BMSSP ───────────────
         if not S_keys:

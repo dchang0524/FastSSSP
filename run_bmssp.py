@@ -48,13 +48,13 @@ def main():
     alg.t = math.floor(math.log2(alg.N) ** (2/3))
     l     = math.ceil(math.log2(alg.N) / alg.t)
 
-    B_prime, U = alg.BMSSP(l, math.inf, {alg.start})
+    B_prime, U = alg.BMSSP(l, (math.inf, math.inf, math.inf), {alg.start})
     print(f"B'={B_prime}, |U|={len(U)}, N={alg.N}")
     for v in list(U)[:10]:
         print(v, alg.dist[v], alg.depth[v], alg.pred[v])
     print(alg.dist[:100])
     # print(alg.adj[:100])
-    print(alg.k, alg.t, l)    
+    print(alg.k, alg.t, l)
 
 if __name__ == "__main__":
     main()
