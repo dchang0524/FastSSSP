@@ -86,40 +86,7 @@ def transformGraph():
         except StopIteration:
             pass
 
-    # 6) 0-가중치 2-사이클 깨기
-    #    (a->b == 0, b->a == 0 인 경우, out-degree가 2인 쪽(또는 더 큰 쪽)에서 0엣지 제거)
-    pairs = set()
-    for a in range(new_n):
-        for b, w in new_adj_list[a].items():
-            if w == eps and a != b and new_adj_list[b].get(a) == eps:
-                pairs.add((min(a, b), max(a, b)))  # 중복 방지
-
-    to_remove = []
-    for a, b in pairs:
-        deg_a = len(new_adj_list[a])
-        deg_b = len(new_adj_list[b])
-
-        # 우선 규칙: 2 대 1이면, 2인 쪽에서 제거
-        if deg_a == 2 and deg_b == 1:
-            remove_from, other = a, b
-        elif deg_b == 2 and deg_a == 1:
-            remove_from, other = b, a
-        else:
-            # 일반화: out-degree가 더 큰 쪽에서 제거 (같으면 id 큰 쪽)
-            if deg_a > deg_b:
-                remove_from, other = a, b
-            elif deg_b > deg_a:
-                remove_from, other = b, a
-            else:
-                remove_from, other = (b, a) if b > a else (a, b)
-
-        if new_adj_list[remove_from].get(other) == eps:
-            to_remove.append((remove_from, other))
-
-    for u, v in to_remove:
-        # 실제로 제거
-        if v in new_adj_list[u] and new_adj_list[u][v] == eps:
-            del new_adj_list[u][v]
+    
 
     # 간선 수는 실제 dict 길이 합으로 재계산 (중복/덮어쓰기 보정)
     new_m = sum(len(d) for d in new_adj_list)
@@ -267,7 +234,7 @@ def BaseCase(B, S):
     """
     Given a bound B and a singleton source S,
     returns a bound B' and a set of vertices U
-    U is a set of size =< k obtained by running 'mini Dijkstra' restricted by B
+    U is a set of size <= k obtained by running 'mini Dijkstra' restricted by B
     and B' is a possibly tighter bound for U
     """
     # --- 1) 입력 검증 & 초기화 -----------------------------
@@ -317,28 +284,28 @@ def BaseCase(B, S):
 def BMSSP(l, B, S):
     global adj, vertices, dist, depth, pred, k, t
     """
-    Given an integer level 0 =< l =< ceiling(logn/t)), source set S of size =< 2^(lt),
+    Given an integer level 0 <= l <= ceiling(logn/t)), source set S of size <= 2^(lt),
     and an upper bound B > max {dist(x) | x in S},
-    returns a bound B' =< B and a set of (note: all complete) vertices U
-    It is required that for every incomplete x with dist(x) < B, 
+    returns a bound B' <= B and a set of (note: all complete) vertices U
+    It is required that for every incomplete x with dist(x) < B,
     the shortest path to x visits some complete vertex y in S
     """
     if l == 0:
         res = BaseCase(B, S)   # ★ 한 번만!
-        print(res)
+        #print(res)
         return res
     (P, W) = findPivots(B, S)
     M = 2**((l-1)*t)
-    print(f"BMSSP: l={l}, B={B}, |S|={len(S)}, |P|={len(P)}, |W|={len(W)}, M={M}")
+    #print(f"BMSSP: l={l}, B={B}, |S|={len(S)}, |P|={len(P)}, |W|={len(W)}, M={M}")
     D = DataStructureD(M, B)
     for x in P:
         D.insert(x, (dist[x], depth[x], x))
 
     #   B′0 ← min_{x∈P} d̂[x]   (P가 비면 B 자체)
-    if not P:
-        print("=====P is empty=====")
-    if P:
-        print(f"=====P is not empty: of size {len(P)}=====")
+    #if not P:
+        #print("=====P is empty=====")
+    #if P:
+        #print(f"=====P is not empty: of size {len(P)}=====")
     B0 = min(((dist[x], depth[x], x) for x in P), default=B)
     B_last = B0
     U      = set()
@@ -352,7 +319,7 @@ def BMSSP(l, B, S):
         i = i+1
         # print(f"D count: {D.nnz}")
         B_i, S_i = D.pull()
-        print(f"BMSSP: i={i}, B_i={B_i}, |S_i|={len(S_i)}")
+        #print(f"BMSSP: i={i}, B_i={B_i}, |S_i|={len(S_i)}")
         # 이번 회차 재귀 호출
         B_prime_i, U_i = BMSSP(l - 1, B_i, S_i)
         B_last = B_prime_i        # ★ 마지막 B′ 갱신
