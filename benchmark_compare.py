@@ -143,7 +143,7 @@ def run_bmssp_top_level():
 # ------------------------------------------------------------
 # 4) 벤치마크 루프
 # ------------------------------------------------------------
-def benchmark(ns: List[int], repeats: int = 3, seed: int = 12345):
+def benchmark(ns: List[int], repeats: int = 1, seed: int = 12345):
     """
     For each original N in ns:
       - generate edges with testcase_generator.py (with N replaced)
@@ -214,37 +214,41 @@ def benchmark(ns: List[int], repeats: int = 3, seed: int = 12345):
 # ------------------------------------------------------------
 # 5) 플로팅/출력
 # ------------------------------------------------------------
-def plot_results(results, title="Runtime vs N"):
+def plot_results(results, title="Runtime ratio: BMSSP / Dijkstra"):
     Ns = [r["N"] for r in results]
     dj = [r["dijkstra_s"] for r in results]
     bm = [r["bmssp_s"] for r in results]
 
+    # ratio 계산 (분모 0 보호)
+    ratio = [ (b/d) if d > 0 else float("inf") for b, d in zip(bm, dj) ]
+
+    import matplotlib.pyplot as plt
     plt.figure()
-    plt.plot(Ns, dj, marker="o", label="Dijkstra (on transformed)")
-    plt.plot(Ns, bm, marker="o", label="BMSSP top-level (on transformed)")
+    plt.plot(Ns, ratio, marker="o", label="BMSSP / Dijkstra")
+    plt.axhline(1.0, linestyle="--", linewidth=1)  # 동일 성능 기준선
+    plt.xscale("log")   # N은 로그 축 유지
+    # plt.yscale("log") # 필요하면 주석 해제 (비율이 수십~수백배로 커질 때)
+
     plt.xlabel("Original N (before transform)")
-    plt.ylabel("Runtime (s)")
+    plt.ylabel("Runtime ratio (T_BMSSP / T_Dijkstra)")
     plt.title(title)
-    plt.xscale("log")
-    plt.yscale("log")
     plt.legend()
     plt.tight_layout()
-    # 저장은 현재 디렉토리에만 (수동으로 가져가기 용이하게)
-    plt.savefig("benchmark_runtime.png", dpi=150)
+    plt.savefig("benchmark_ratio.png", dpi=150)
     plt.show()
 
 def print_table(results):
-    print("\nN, N', transform_s, dijkstra_s, bmssp_s")
+    print("\nN, N', transform_s, dijkstra_s, bmssp_s, ratio")
     for r in results:
-        print("{:>8}, {:>8}, {:>9.3f}, {:>10.3f}, {:>9.3f}".format(
-            r["N"], r["N_trans"], r["transform_s"], r["dijkstra_s"], r["bmssp_s"]
+        ratio = (r["bmssp_s"] / r["dijkstra_s"]) if r["dijkstra_s"] > 0 else float("inf")
+        print("{:>8}, {:>8}, {:>9.3f}, {:>10.3f}, {:>9.3f}, {:>7.2f}".format(
+            r["N"], r["N_trans"], r["transform_s"], r["dijkstra_s"], r["bmssp_s"], ratio
         ))
 
 if __name__ == "__main__":
     # 필요시 N 리스트 조정 가능
-    ns = [2**i for i in range(10, 21)] # 1024 to 2097152
+    ns = [2**i for i in range(17, 22)] # 131072 to 2097152
     results = benchmark(ns, repeats=3, seed=12345)
     print_table(results)
     if results:
-        plot_results(results, title="Runtime vs N")
-
+        plot_results(results, title="Runtime ratio: BMSSP / Dijkstra")
