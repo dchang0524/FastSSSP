@@ -1,4 +1,6 @@
+from turtle import left
 from sortedcontainers import SortedDict
+import math
 # No longer need to import algorithms, which solves the circular import
 # import algorithms as alg 
 
@@ -132,12 +134,18 @@ class DataStructureD:
     def _select_median(self, items):
         # items is a list of [(key, value_tuple)]
         # The default sort key (the whole item) is fine, but sorting by the value_tuple is more explicit.
-        if len(items) <= 5:
-            return sorted(items, key=lambda x: x[1])[len(items)//2]
+
+        #deterministic (median of medians)
+        # if len(items) <= 5:
+        #     return sorted(items, key=lambda x: x[1])[len(items)//2]
         
-        groups = [items[i:i+5] for i in range(0, len(items), 5)]
-        medians = [sorted(g, key=lambda x: x[1])[len(g)//2] for g in groups]
-        return self._select_median(medians)
+        # groups = [items[i:i+5] for i in range(0, len(items), 5)]
+        # medians = [sorted(g, key=lambda x: x[1])[len(g)//2] for g in groups]
+        # return self._select_median(medians)
+
+        #randomized
+        return items[len(items) // 2]
+
 
     def quickselect(self, lst, k):
         #lst contains <key, value>
@@ -204,14 +212,26 @@ class DataStructureD:
         if not items_to_prepend:
             return
 
-        def chunk(lst): #slower
+        def chunk(lst):
             if not lst: return []
-            if len(lst) <= self.M: return [lst]
-            med_tuple = self.quickselect(lst, self.M // 2)
-            left = [x for x in lst if x[1] < med_tuple]
-            pivots = [x for x in lst if x[1] == med_tuple]
-            right = [x for x in lst if x[1] > med_tuple]
-            left.extend(pivots)
+            if len(lst) <= math.ceil(max(1, self.M // 2)): return [lst]
+            med = self.quickselect(lst, len(lst) // 2)
+            lows  = [x for x in lst if x[1] <  med]
+            pivs  = [x for x in lst if x[1] == med]     # size == 1 under your uniqueness assumption
+            highs = [x for x in lst if x[1] >  med]
+            
+            if not highs:
+                # move pivot to highs
+                highs = pivs
+                left  = lows
+            elif not lows:
+                # move pivot to lows
+                left  = pivs
+            else:
+                # both sides non-empty; attach pivot to one side (left) as you like
+                left  = lows + pivs
+
+            right = highs
             return chunk(left) + chunk(right)
 
         for group in reversed(chunk(items_to_prepend)):
