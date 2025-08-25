@@ -136,15 +136,15 @@ class DataStructureD:
         # The default sort key (the whole item) is fine, but sorting by the value_tuple is more explicit.
 
         #deterministic (median of medians)
-        # if len(items) <= 5:
-        #     return sorted(items, key=lambda x: x[1])[len(items)//2]
+        if len(items) <= 5:
+            return sorted(items, key=lambda x: x[1])[len(items)//2]
         
-        # groups = [items[i:i+5] for i in range(0, len(items), 5)]
-        # medians = [sorted(g, key=lambda x: x[1])[len(g)//2] for g in groups]
-        # return self._select_median(medians)
+        groups = [items[i:i+5] for i in range(0, len(items), 5)]
+        medians = [sorted(g, key=lambda x: x[1])[len(g)//2] for g in groups]
+        return self._select_median(medians)
 
         #randomized
-        return items[len(items) // 2]
+        # return items[len(items) // 2]
 
 
     def quickselect(self, lst, k):
@@ -219,7 +219,6 @@ class DataStructureD:
             lows  = [x for x in lst if x[1] <  med]
             pivs  = [x for x in lst if x[1] == med]     # size == 1 under your uniqueness assumption
             highs = [x for x in lst if x[1] >  med]
-            
             if not highs:
                 # move pivot to highs
                 highs = pivs
