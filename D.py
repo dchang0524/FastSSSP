@@ -113,13 +113,7 @@ class DataStructureD:
         
         # bisect_left works correctly on the sorted tuple keys of D1
         idx   = self.D1.bisect_left(value_tuple)     # 위치 탐색
-        keys  = list(self.D1.keys())                 # key-view → list
-
-        # idx 가 len(keys) 인 경우 → 마지막 블록을 선택
-        if idx == len(keys):
-            bound_tuple = keys[-1] #works if guranteed value of key <= B
-        else:
-            bound_tuple = keys[idx]
+        bound_tuple = self.D1.peekitem(idx)[0]
 
         blk = self.D1[bound_tuple]
         
