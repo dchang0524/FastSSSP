@@ -16,6 +16,7 @@ adj = [dict() for _ in range(N)]
 dist = [INF] * N  # sum of path weights
 depth = [INF] * N   # number of vertices traversed
 pred = [-1] * N  #last previous vertex visited in path
+keys = []   # keys[v] = (dist[v], depth[v], v)
 
 # Graph Transformation
 def transformGraph():
@@ -109,6 +110,10 @@ def transformGraph():
     if 0 <= start < N:
         dist[start]  = 0
         depth[start] = 0
+    
+    # ↓ 아래 두 줄 추가
+    global keys
+    keys = [(dist[i], depth[i], i) for i in range(N)]    
 
           
 
@@ -133,7 +138,7 @@ def needsUpdate(u, v):
     return False
 
 def update(u, v):
-    global N, M, start, adj, vertices, dist, depth, pred, k, t
+    global N, M, start, adj, vertices, dist, depth, pred, k, t, keys
     
     new_d = dist[u] + adj[u][v]
     # needsUpdate가 True일 때만 호출된다고 가정
@@ -141,6 +146,8 @@ def update(u, v):
         dist[v]  = new_d
         depth[v] = depth[u] + 1
         pred[v]  = u
+        # ★ 추가: 키 캐시 갱신
+        keys[v] = (new_d, depth[v], v)
 
 def cmp(u, v):                          # tie-breaking이 필요하면
     global N, M, start, adj, vertices, dist, depth, pred, k, t
@@ -269,20 +276,20 @@ def BaseCase(B, S):
                 if needsUpdate(u, v):
                     # If so, perform the update and push to the heap
                     update(u, v)
-                    heapq.heappush(heap, ((nd, depth[u] + 1, v), v))
+                    heapq.heappush(heap, (keys[v], v))
 
     # --- 3) 정점 수(k+1) 에 따라 반환 ----------------------
     if len(U_0) <= k:                 # 아직 k개 이하라면
         return B, U_0                 #  → B는 그대로
     else:                             # k+1개가 모이면
-        farthest = max(U_0, key=lambda v: (dist[v], depth[v], v))   # 가장 먼 정점
-        B_p = (dist[farthest], depth[farthest], farthest)          # 더 타이트한 B'
+        farthest = max(U_0, key=lambda v: keys[v])  # ★ keys 사용
+        B_p = keys[farthest]                        # ★ keys 사용
         U_0.remove(farthest)          # U는 k개로 줄여서 반환
         return B_p, U_0
 
 # Algorithm 3
 def BMSSP(l, B, S):
-    global adj, vertices, dist, depth, pred, k, t
+    global adj, vertices, dist, depth, pred, k, t, keys
     """
     Given an integer level 0 <= l <= ceiling(logn/t)), source set S of size <= 2^(lt),
     and an upper bound B > max {dist(x) | x in S},
@@ -299,14 +306,14 @@ def BMSSP(l, B, S):
     #print(f"BMSSP: l={l}, B={B}, |S|={len(S)}, |P|={len(P)}, |W|={len(W)}, M={M}")
     D = DataStructureD(M, B)
     for x in P:
-        D.insert(x, (dist[x], depth[x], x))
+        D.insert(x, keys[x])
 
     #   B′0 ← min_{x∈P} d̂[x]   (P가 비면 B 자체)
     #if not P:
         #print("=====P is empty=====")
     #if P:
         #print(f"=====P is not empty: of size {len(P)}=====")
-    B0 = min(((dist[x], depth[x], x) for x in P), default=B)
+    B0 = min((keys[x] for x in P), default=B)   # ★ keys 사용
     B_last = B0
     U      = set()
     i      = 0
@@ -329,19 +336,19 @@ def BMSSP(l, B, S):
             for v in adj[u]:
                 if needsUpdate(u, v):
                     update(u, v)
-                    if (dist[u] + adj[u][v], depth[u] + 1, v) >= B_i and (dist[u] + adj[u][v], depth[u] + 1, v) < B:
-                        D.insert(v, (dist[u] + adj[u][v], depth[u] + 1, v))
-                    elif (dist[u] + adj[u][v], depth[u] + 1, v) >= B_prime_i and (dist[u] + adj[u][v], depth[u] + 1, v) < B_i:
-                        K.append((v, (dist[u] + adj[u][v], depth[u] + 1, v)))
+                    if B_i <= keys[v] < B:
+                        D.insert(v, keys[v])
+                    elif B_prime_i <= keys[v] < B_i:
+                        K.append((v, keys[v]))
         for x in S_i:
-            if (dist[x], depth[x], x) >= B_prime_i and (dist[x], depth[x], x) < B_i:
-                K.append((x, (dist[x], depth[x], x)))
+            if B_prime_i <= keys[x] < B_i:
+                K.append((x, keys[x]))
         D.batch_prepend(K)
         # BMSSP while 바디 끝부분, D.batch_prepend(K) 바로 다음
         #print(f"[l={l}] after prepend: |K|={len(K)}, D_empty={not D}")
 
     # ----- 3. 종료 처리 ---------------------------------------
     B_final = min(B_last, B)                     # 22 행과 동일
-    U.update(x for x in W if (dist[x], depth[x], x) < B_final)  # U ← U ∪ { … }
+    U.update(x for x in W if keys[x] < B_final)  # U ← U ∪ { … }
 
     return B_final, U  # B', U 
