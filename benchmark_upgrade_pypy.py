@@ -21,6 +21,16 @@ from typing import List, Tuple, Dict
 import algorithms as alg              # your BMSSP + transformGraph
 import dijkstra_baseline as dijk      # your baseline Dijkstra on dict adjacency
 
+# --- at the top, with other imports ---
+# (keep your existing imports)
+try:
+    import bmssp_ideal_case as ideal
+except Exception:
+    ideal = None
+
+# Turn this on to benchmark the ideal grid instead of testcase_generator
+USE_IDEAL_GRID = 1
+
 # ---------- helpers ----------
 
 Edge = Tuple[int, int, int]  # (u, v, w)
@@ -187,6 +197,64 @@ def run_transform_then_dijkstra_then_bmssp(N0: int, start0: int, edges0: List[Ed
     }
 
 
+def run_no_transform_then_dijkstra_then_bmssp(N0: int, start0: int, edges0: List[Edge]):
+    """
+    For already-constant-degree graphs (like the ideal grid), we SKIP transformGraph().
+    We set algorithms.* manually and run Dijkstra and BMSSP on the original adjacency
+    in dict form (list[dict[v]=w]).
+    """
+    # Build list[dict] adjacency
+    adj_dict = edges_to_adj_dict(N0, edges0)
+
+    # Wire into algorithms.* so BMSSP sees the graph it expects (dict adjacency)
+    alg.N = N0
+    alg.M = sum(len(d) for d in adj_dict)
+    alg.adj = adj_dict
+    alg.start = start0
+    alg.vertices = list(range(alg.N))
+
+    # k, t consistent with your transformGraph choices
+    if alg.N > 1:
+        lg = math.log2(alg.N)
+        alg.k = max(1, int(math.floor(lg ** (1/3))))
+        alg.t = max(1, int(math.floor(lg ** (2/3))))
+    else:
+        alg.k = alg.t = 1
+
+    # Dijkstra
+    t2 = time.perf_counter()
+    _ = dijk.dijkstra_on_adj_dict(adj_dict, start0)
+    t3 = time.perf_counter()
+
+    # BMSSP
+    n = alg.N
+    l = math.ceil(math.log2(n) / max(1, alg.t)) if n > 1 else 0
+    # reset labels
+    INF = math.inf
+    alg.dist  = [INF] * n
+    alg.depth = [INF] * n
+    alg.pred  = [-1]  * n
+    alg.dist[alg.start]  = 0
+    alg.depth[alg.start] = 0
+
+    t4 = time.perf_counter()
+    B_prime, U = alg.BMSSP(l, (math.inf, math.inf, math.inf), {alg.start})
+    t5 = time.perf_counter()
+
+    status = "successful" if len(U) == n else "partial"
+
+    return {
+        "N0": N0,
+        "N1": N0,              # no transform
+        "start1": start0,
+        "t_transform": 0.0,    # skipped
+        "t_dijkstra": t3 - t2,
+        "t_bmssp": t5 - t4,
+        "ratio": (t5 - t4) / (t3 - t2) if (t3 - t2) > 0 else float("inf"),
+        "status": status,
+    }
+
+
 def benchmark(ns: List[int], repeats: int = 3, seed: int = 0, csv_path: str = "pypy_results.csv"):
     rows = []
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
@@ -194,11 +262,20 @@ def benchmark(ns: List[int], repeats: int = 3, seed: int = 0, csv_path: str = "p
         w.writerow(["N", "N'", "transform_s", "dijkstra_s", "bmssp_s", "ratio", "status"])
 
     for N in ns:
-        Ngen, start0, edges = load_edges_with_generator(N, seed=seed)
+        if USE_IDEAL_GRID:
+            if ideal is None:
+                raise RuntimeError("bmssp_ideal_case.py not found (import failed)")
+            # Build the grid with ~N vertices; builder returns N0 = L*L
+            Ngen, start0, edges = ideal.build_grid(N)
+            runner = run_no_transform_then_dijkstra_then_bmssp
+        else:
+            # Your existing testcase_generator path (with transformGraph)
+            Ngen, start0, edges = load_edges_with_generator(N, seed=seed)
+            runner = run_transform_then_dijkstra_then_bmssp
 
         best = None
         for _ in range(repeats):
-            stats = run_transform_then_dijkstra_then_bmssp(Ngen, start0, edges)
+            stats = runner(Ngen, start0, edges)
             if best is None or stats["t_bmssp"] < best["t_bmssp"]:
                 best = stats
 
@@ -223,6 +300,6 @@ def benchmark(ns: List[int], repeats: int = 3, seed: int = 0, csv_path: str = "p
 
 
 if __name__ == "__main__":
-    ns = [2**17, 2**18, 2**19, 2**20, 2**21]  # adjust freely
+    ns = [2**17, 2**18, 2**19, 2**20, 2**21, 2**22, 2**23]  # adjust freely
     benchmark(ns, repeats=3, seed=12345)
 

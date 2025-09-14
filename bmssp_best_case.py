@@ -254,7 +254,7 @@ def plot_results(results, title="Runtime ratio: BMSSP / Dijkstra"):
 
     ratio = [(b / d) if d > 0 else float("inf") for b, d in zip(bm, dj)]
 
-    import matplotlib.pyplot as plt
+    """import matplotlib.pyplot as plt
     plt.figure()
     plt.plot(Ns, ratio, marker="o", label="BMSSP / Dijkstra")
     plt.axhline(1.0, linestyle="--", linewidth=1)
@@ -265,7 +265,7 @@ def plot_results(results, title="Runtime ratio: BMSSP / Dijkstra"):
     plt.legend()
     plt.tight_layout()
     plt.savefig("benchmark_ratio_bmssp_ideal.png", dpi=150)
-    plt.show()
+    plt.show()"""
 
 
 def print_table(results):
@@ -280,7 +280,7 @@ def print_table(results):
 if __name__ == "__main__":
     # Choose n as the WIDTH of the middle layer (stress Dijkstra’s queue growth).
     # You can tune hub_count and chain_len to your taste.
-    ns = [2**i for i in range(14, 21)]  # 16384 to ~2M middle nodes
+    ns = [2**i for i in range(17, 22)]  # 16384 to ~2M middle nodes
     results = benchmark(ns, repeats=3, hub_count=3, chain_len=None)
     print_table(results)
     if results:
