@@ -17,6 +17,8 @@ dist = [INF] * N  # sum of path weights
 depth = [INF] * N   # number of vertices traversed
 pred = [-1] * N  #last previous vertex visited in path
 
+k = 3
+
 # Graph Transformation
 def transformGraph():
     global N, M, start, adj, vertices, dist, depth, pred, k, t
@@ -101,6 +103,7 @@ def transformGraph():
     # 파라미터/배열 초기화
     k = math.floor(log2(N) ** (1/3)) if N > 1 else 0
     t = math.floor(log2(N) ** (2/3)) if N > 1 else 0
+    k = 3
 
     INF = math.inf
     dist  = [INF] * N
