@@ -1,4 +1,3 @@
-from turtle import left
 from sortedcontainers import SortedDict
 import math
 # No longer need to import algorithms, which solves the circular import
@@ -161,6 +160,19 @@ class DataStructureD:
 
     def _split_block(self, old_bound_tuple):
         blk = self.D1.pop(old_bound_tuple)
+        if self.M == 1 and blk.size == 2:
+            first = blk.head
+            second = first.next
+            low, high = (first, second) if first.value < second.value else (second, first)
+            low_blk = Block(low.value)
+            high_blk = Block(old_bound_tuple)
+            low_blk.insert_front(low)
+            high_blk.insert_front(high)
+            self.block_map[low.key] = low_blk
+            self.block_map[high.key] = high_blk
+            self.D1[low_blk.bound] = low_blk
+            self.D1[high_blk.bound] = high_blk
+            return
         items = []
         cur = blk.head
         while cur:
@@ -254,13 +266,28 @@ class DataStructureD:
         """
         Return (x, S) where
         • S : set of ≤ M keys whose (distance, depth, pred) tuples are the smallest in D
-        • x : scalar lower-bound that separates S from the remaining elements
+        • x : tuple lower-bound that separates S from the remaining elements
         After the call every key in S is physically removed from the data structure.
         If the structure becomes empty we return (B, ∅).
         """
         if self.nnz == 0:
-            print("================Pulling when D is emtpy=================")
-            return
+            return self.B, set()
+        if self.M == 1:
+            # The generic path collects two blocks, allocates a list, and
+            # quickselects one item.  Both candidate blocks hold one node.
+            d0_node = self.d0_head.head if self.d0_head else None
+            d1_node = self.D1.peekitem(0)[1].head if self.D1 else None
+            if d0_node is None:
+                chosen = d1_node
+            elif d1_node is None or d0_node.value < d1_node.value:
+                chosen = d0_node
+            else:
+                chosen = d1_node
+            self.delete(chosen.key)
+            d0_node = self.d0_head.head if self.d0_head else None
+            d1_node = self.D1.peekitem(0)[1].head if self.D1 else None
+            bound = min((node.value for node in (d0_node, d1_node) if node), default=self.B)
+            return bound, {chosen.key}
         # 1)  ── Collect a prefix of blocks until ≥ M items ─────────────────────────
         collected = []
         
@@ -272,13 +299,14 @@ class DataStructureD:
             if count >= self.M: break
             current_block = current_block.next_block
 
-        count = 0
-        if count < self.M:                       # then scan inserted blocks
-            for _, blk in self.D1.items():
-                collected.append(blk)
-                count += blk.size
-                if count >= self.M:
-                    break
+        # The prepend path does not ensure all D0 values precede D1 values,
+        # so selection needs candidates from both block lists.
+        d1_count = 0
+        for _, blk in self.D1.items():
+            collected.append(blk)
+            d1_count += blk.size
+            if d1_count >= self.M:
+                break
 
 
         # 2)  ── Flatten the nodes inside the collected blocks ─────────────────────
@@ -388,4 +416,3 @@ class DataStructureD:
     ###########################
     # __bool__() is needed for 'if D' check in the main algorithm.
     ###########################
-

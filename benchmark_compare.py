@@ -175,10 +175,11 @@ def benchmark(ns: List[int], repeats: int = 1, seed: int = 12345):
 
         # 4.4 baseline Dijkstra (여러 번 반복 평균)
         d_times = []
+        baseline_dist = None
         for _ in range(repeats):
             gc.collect()
             t0 = time.perf_counter()
-            _ = run_baseline_dijkstra()
+            baseline_dist = run_baseline_dijkstra()
             t1 = time.perf_counter()
             d_times.append(t1 - t0)
         d_avg = sum(d_times) / len(d_times)
@@ -195,9 +196,13 @@ def benchmark(ns: List[int], repeats: int = 1, seed: int = 12345):
             b_times.append(t1 - t0)
         b_avg = sum(b_times) / len(b_times)
 
-        # 성공 여부 판단
-        success = (last_U is not None and len(last_U) == alg.N)   # ← 추가
-        status  = "successful" if success else f"incomplete |U|={len(last_U) if last_U is not None else 'NA'}/{alg.N}"  # ← 추가
+        # Timings are meaningful only if BMSSP solves the same SSSP problem.
+        reachable = {v for v, d in enumerate(baseline_dist) if d < math.inf}
+        mismatches = sum(a != b for a, b in zip(alg.dist, baseline_dist))
+        success = last_U == reachable and mismatches == 0
+        status = ("correct" if success else
+                  f"incorrect |U|={len(last_U) if last_U is not None else 'NA'}/"
+                  f"{len(reachable)}, distance mismatches={mismatches}")
 
         print(f"[N={N}] transform N'={N_trans}| "
               f"transform={transform_time:.3f}s, dijkstra={d_avg:.3f}s, bmssp={b_avg:.3f}s {status}")
@@ -208,6 +213,7 @@ def benchmark(ns: List[int], repeats: int = 1, seed: int = 12345):
             "transform_s": transform_time,
             "dijkstra_s": d_avg,
             "bmssp_s": b_avg,
+            "correct": success,
         })
     return results
 

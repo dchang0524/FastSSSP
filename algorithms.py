@@ -245,15 +245,18 @@ def BaseCase(B, S):
     U_0 = set(S)             # 현재까지 확정된 정점 집합 (최대 k+1개)
 
     # --- 2) 미니 다이크스트라 -----------------------------
-    heap = [((dist[x], pred[x], x), x)]    # (거리, 정점)
+    heap = [((dist[x], depth[x], x), x)]
     heapq.heapify(heap)
+    settled = set()
 
     while heap and len(U_0) < k + 1:
         d_u, u = heapq.heappop(heap)
 
-        # 낡은 키/Bound 체크
-        # if d_u > dist[u] or d_u >= B:
-        #    continue
+        # A decrease-key leaves an old heap entry behind.  Expanding it can
+        # relax edges from an obsolete distance and revisit the same vertex.
+        if d_u != (dist[u], depth[u], u) or d_u >= B or u in settled:
+            continue
+        settled.add(u)
 
         if u not in U_0:
             U_0.add(u)
@@ -344,4 +347,4 @@ def BMSSP(l, B, S):
     B_final = min(B_last, B)                     # 22 행과 동일
     U.update(x for x in W if (dist[x], depth[x], x) < B_final)  # U ← U ∪ { … }
 
-    return B_final, U  # B', U 
+    return B_final, U  # B', U
